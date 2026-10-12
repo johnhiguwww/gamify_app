@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 
 // #$ StoreItem — recompensa real cadastrada pelo próprio usuário (Figuras 7 e 8).
 class StoreItem {
@@ -29,4 +30,19 @@ class StoreItem {
         iconColor: iconColor,
         active: active ?? this.active,
       );
+
+  factory StoreItem.fromJson(Map<String, dynamic> json) {
+    final title = (json['title'] as String?) ?? (json['name'] as String?) ?? '';
+    final value = (json['value'] as num?)?.toInt() ?? (json['cost'] as num?)?.toInt() ?? 0;
+    final purchaseAt = json['purchase_at'] ?? json['purchaseAt'];
+    return StoreItem(
+      id: json['id']?.toString() ?? '',
+      title: title,
+      description: 'Recompensa da loja',
+      cost: value,
+      icon: Icons.card_giftcard,
+      iconColor: AppColors.primaryGreen,
+      active: purchaseAt == null,
+    );
+  }
 }

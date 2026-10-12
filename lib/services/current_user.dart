@@ -9,7 +9,13 @@ class CurrentUser {
 
   static UserProfile? profile;
 
+  // #v userId — UUID do usuário Supabase, armazenado separadamente do
+  // UserProfile para que as telas possam chamar a API sem re-importar
+  // o SupabaseClient.
+  static String? userId;
+
   static void clear() {
     profile = null;
+    userId = null;
   }
 }

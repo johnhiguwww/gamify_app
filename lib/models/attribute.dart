@@ -39,6 +39,18 @@ extension AttributeTypeX on AttributeType {
         AttributeType.raciocinioLogico => Icons.route,
         AttributeType.musicalidade => Icons.music_note,
       };
+
+  String get apiKey => switch (this) {
+        AttributeType.inteligencia => 'intelligence',
+        AttributeType.forca => 'strength',
+        AttributeType.espiritualidade => 'spirituality',
+        AttributeType.carisma => 'charisma',
+        AttributeType.percepcaoEspacial => 'spatial_perception',
+        AttributeType.autoconsciencia => 'self_awareness',
+        AttributeType.linguagem => 'language',
+        AttributeType.raciocinioLogico => 'logical_reasoning',
+        AttributeType.musicalidade => 'musicality',
+      };
 }
 
 // #$ AttributeProgress — estado atual de um atributo pro usuário logado.

@@ -7,7 +7,7 @@ class SupabaseService {
   SupabaseService._();
 
   static const String supabaseUrl = 'https://eiyfmcjzhqqcrofllsjd.supabase.co';
-  static const String supabaseAnonKey = 'postgresql://postgres:[YOUR-PASSWORD]@db.eiyfmcjzhqqcrofllsjd.supabase.co:5432/postgres';
+  static const String supabaseAnonKey = 'sb_publishable_znaEWRyeirGQyC_E4kNbhg_hbR_s646';
 
   static Future<void> init() async {
     await Supabase.initialize(

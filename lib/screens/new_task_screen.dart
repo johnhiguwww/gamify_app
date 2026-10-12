@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
+import '../models/attribute.dart';
 import '../models/task.dart';
+import '../services/current_user.dart';
+import '../services/gamify_api_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/attribute_selector.dart';
 import '../widgets/form_bits.dart';
-
-const _xpChoices = [10, 20, 30, 50, 80, 120, 150, 200];
-const _goldChoices = [5, 10, 15, 20, 30, 50, 80];
-const _unitChoices = ['vez', 'vezes', 'min', 'páginas', 'km', 'contatos'];
 
 class NewTaskScreen extends StatefulWidget {
   const NewTaskScreen({super.key});
@@ -18,19 +17,59 @@ class NewTaskScreen extends StatefulWidget {
 class _NewTaskScreenState extends State<NewTaskScreen> {
   final _titleController = TextEditingController(text: 'Ler 10 páginas');
   final _descController = TextEditingController();
-  final _quantityController = TextEditingController(text: '10');
-
-  AttributeOption _attribute = attributeOptions[1]; // #v default: Inteligência, como na Figura
+  AttributeOption _attribute = attributeOptions[1]; // default: Inteligência
   TaskFrequency _frequency = TaskFrequency.diaria;
   int _xp = 120;
   int _gold = 30;
-  String _unit = 'páginas';
   bool _reminder = false;
+  bool _saving = false;
+
+  // #f _frequencyToApi — mapeia o enum local pro valor esperado pelo
+  // backend Java (UNIQUE, DAILY, WEEKLY, MONTHLY).
+  String _frequencyToApi(TaskFrequency f) => switch (f) {
+        TaskFrequency.diaria => 'DAILY',
+        TaskFrequency.semanal => 'WEEKLY',
+        TaskFrequency.mensal => 'MONTHLY',
+        TaskFrequency.unica => 'UNIQUE',
+      };
+
+  Future<void> _submit() async {
+    if (_titleController.text.trim().isEmpty || _saving) return;
+    setState(() => _saving = true);
+    try {
+      final userId = CurrentUser.userId;
+      if (userId == null) throw Exception('Sessão expirada, faça login novamente.');
+      await GamifyApiService.instance.createTask(
+        profileUuid: userId,
+        title: _titleController.text.trim(),
+        // #!! descrição é opcional na tela, mas obrigatória na API; usamos
+        // o título como descrição padrão quando o campo fica em branco.
+        description: _descController.text.trim().isEmpty ? _titleController.text.trim() : _descController.text.trim(),
+        reward: _gold,
+        experience: _xp,
+        frequency: _frequencyToApi(_frequency),
+        attributes: _attribute.type?.apiKey ?? 'intelligence',
+        // #!! ainda não existe seletor de dias da semana na tela; usamos
+        // segunda-feira como padrão quando a frequência é semanal.
+        daysOfWeek: _frequency == TaskFrequency.semanal ? ['MON'] : null,
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (e, stack) {
+      debugPrint('Erro ao salvar tarefa: $e\n$stack');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível salvar a tarefa: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    for (final c in [_titleController, _descController, _quantityController]) {
+    for (final c in [_titleController, _descController]) {
       c.addListener(() => setState(() {}));
     }
   }
@@ -39,14 +78,11 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
   void dispose() {
     _titleController.dispose();
     _descController.dispose();
-    _quantityController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final quantity = int.tryParse(_quantityController.text) ?? 0;
-
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -73,8 +109,14 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                   ),
                 ),
                 TextButton(
-                  onPressed: _titleController.text.trim().isEmpty ? null : () => Navigator.of(context).pop(),
-                  child: const Text('Salvar', style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w700)),
+                  onPressed: (_titleController.text.trim().isEmpty || _saving) ? null : _submit,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryGreen),
+                        )
+                      : const Text('Salvar', style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w700)),
                 ),
               ],
             ),
@@ -93,8 +135,8 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
               decoration: const InputDecoration(hintText: 'Ex: Ler 10 páginas'),
             ),
             const SizedBox(height: 16),
-            const FormLabel('Atributo principal'),
-            AttributeSelector(selected: _attribute, onSelected: (o) => setState(() => _attribute = o)),
+            const FormLabel('Atributo', tooltip: 'Qual inteligência esta tarefa desenvolve?'),
+            AttributeSelector(selected: _attribute, onSelected: (v) => setState(() => _attribute = v)),
             const SizedBox(height: 16),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -111,7 +153,12 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                         value: '+$_xp',
                         caption: '',
                         showChevron: true,
-                        onTap: () => _pickFromList(context, title: 'XP', options: _xpChoices, onPick: (v) => setState(() => _xp = v)),
+                        onTap: () => _pickCustomValue(
+                          context,
+                          title: 'XP',
+                          currentValue: _xp,
+                          onPick: (v) => setState(() => _xp = v),
+                        ),
                       ),
                       const SizedBox(height: 8),
                       MetricPill(
@@ -121,7 +168,12 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                         value: '+$_gold',
                         caption: '',
                         showChevron: true,
-                        onTap: () => _pickFromList(context, title: 'Gold', options: _goldChoices, onPick: (v) => setState(() => _gold = v)),
+                        onTap: () => _pickCustomValue(
+                          context,
+                          title: 'Gold',
+                          currentValue: _gold,
+                          onPick: (v) => setState(() => _gold = v),
+                        ),
                       ),
                     ],
                   ),
@@ -138,57 +190,18 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const FormLabel('Meta', tooltip: 'Quantidade necessária para concluir o ciclo'),
-                      const Text('Quantidade', style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
-                      const SizedBox(height: 4),
-                      TextField(
-                        controller: _quantityController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(isDense: true),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text('Unidade', style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
-                      const SizedBox(height: 4),
-                      DropdownButtonFormField<String>(
-                        value: _unit,
-                        dropdownColor: AppColors.surfaceAlt,
-                        decoration: const InputDecoration(isDense: true),
-                        items: [for (final u in _unitChoices) DropdownMenuItem(value: u, child: Text(u))],
-                        onChanged: (v) => setState(() => _unit = v ?? _unit),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const FormLabel('Lembrete', tooltip: 'Receba uma notificação no horário definido'),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.notifications_none, size: 16, color: AppColors.primaryGreen),
-                            const SizedBox(width: 6),
-                            const Expanded(child: Text('Adicionar lembrete', style: TextStyle(color: AppColors.textPrimary, fontSize: 12))),
-                            Switch(value: _reminder, onChanged: (v) => setState(() => _reminder = v)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            const FormLabel('Lembrete', tooltip: 'Receba uma notificação no horário definido'),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+              child: Row(
+                children: [
+                  const Icon(Icons.notifications_none, size: 16, color: AppColors.primaryGreen),
+                  const SizedBox(width: 6),
+                  const Expanded(child: Text('Adicionar lembrete', style: TextStyle(color: AppColors.textPrimary, fontSize: 12))),
+                  Switch(value: _reminder, onChanged: (v) => setState(() => _reminder = v)),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             Row(
@@ -215,8 +228,8 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                     Container(
                       width: 36,
                       height: 36,
-                      decoration: BoxDecoration(color: _attribute.color.withOpacity(0.18), shape: BoxShape.circle),
-                      child: Icon(_attribute.icon, color: _attribute.color, size: 18),
+                      decoration: BoxDecoration(color: AppColors.primaryGreen.withOpacity(0.18), shape: BoxShape.circle),
+                      child: const Icon(Icons.check_circle_outline, color: AppColors.primaryGreen, size: 18),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -229,10 +242,6 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                           ),
                           const SizedBox(height: 3),
                           Row(children: [
-                            Text(_attribute.label, style: TextStyle(color: _attribute.color, fontSize: 11.5)),
-                            const SizedBox(width: 6),
-                            Container(width: 4, height: 4, decoration: const BoxDecoration(color: AppColors.primaryGreen, shape: BoxShape.circle)),
-                            const SizedBox(width: 6),
                             Text(_frequency.label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
                           ]),
                         ],
@@ -253,43 +262,70 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 4),
-            if (quantity > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text('Meta: $quantity $_unit por ciclo (${_frequency.label.toLowerCase()})',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-              ),
           ],
         ),
       ),
     );
   }
 
-  void _pickFromList(BuildContext context, {required String title, required List<int> options, required ValueChanged<int> onPick}) {
-    showModalBottomSheet(
+  // #f _pickCustomValue — abre um diálogo com campo numérico livre para o
+  // usuário digitar o valor de XP ou Gold que quiser, sem lista fixa.
+  Future<void> _pickCustomValue(
+    BuildContext context, {
+    required String title,
+    required int currentValue,
+    required ValueChanged<int> onPick,
+  }) async {
+    final controller = TextEditingController(text: currentValue.toString());
+    String? errorText;
+
+    final result = await showDialog<int>(
       context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text('Escolha o valor de $title', style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          title: Text('Definir $title', style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: AppColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'Valor de $title',
+              errorText: errorText,
             ),
-            for (final v in options)
-              ListTile(
-                title: Text('+$v', style: const TextStyle(color: AppColors.textPrimary)),
-                onTap: () {
-                  onPick(v);
-                  Navigator.of(context).pop();
-                },
-              ),
+            onSubmitted: (_) {
+              final value = int.tryParse(controller.text.trim());
+              if (value != null && value > 0) {
+                Navigator.of(context).pop(value);
+              } else {
+                setDialogState(() => errorText = 'Digite um número inteiro maior que zero');
+              }
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () {
+                final value = int.tryParse(controller.text.trim());
+                if (value != null && value > 0) {
+                  Navigator.of(context).pop(value);
+                } else {
+                  setDialogState(() => errorText = 'Digite um número inteiro maior que zero');
+                }
+              },
+              child: const Text('Confirmar', style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w700)),
+            ),
           ],
         ),
       ),
     );
+
+    if (result != null) onPick(result);
   }
 }
 

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import '../data/mock_data.dart';
 import '../models/store_item.dart';
+import '../services/current_user.dart';
+import '../services/gamify_api_service.dart';
 import '../theme/app_colors.dart';
 import 'store_management_screen.dart';
+import '../data/mock_data.dart';
 
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key});
@@ -12,20 +14,56 @@ class StoreScreen extends StatefulWidget {
 }
 
 class _StoreScreenState extends State<StoreScreen> {
-  late List<StoreItem> _items = List.of(MockData.storeItems.where((i) => i.active));
-  int _gold = MockData.user.gold;
+  List<StoreItem> _items = [];
+  int _gold = 0;
+  bool _loading = true;
 
-  void _buy(StoreItem item) {
+  @override
+  void initState() {
+    super.initState();
+    _loadStore();
+  }
+
+  Future<void> _loadStore() async {
+    final userId = CurrentUser.userId;
+    if (userId == null) return;
+    try {
+      final profile = await GamifyApiService.instance.fetchProfile(userId);
+      final items = await GamifyApiService.instance.fetchStoreItems(userId);
+      if (mounted) {
+        setState(() {
+          _gold = profile?.gold ?? 0;
+          _items = items.where((i) => i.active).toList();
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _buy(StoreItem item) async {
+    final userId = CurrentUser.userId;
+    if (userId == null) return;
     if (_gold < item.cost) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Gold insuficiente para essa recompensa.')),
       );
       return;
     }
-    setState(() => _gold -= item.cost);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Recompensa resgatada: ${item.title}')),
-    );
+    try {
+      await GamifyApiService.instance.purchaseStoreItem(userId: userId, itemId: item.id);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Recompensa resgatada: ${item.title}')),
+      );
+      await _loadStore();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao comprar recompensa: $e')),
+        );
+      }
+    }
   }
 
   @override
