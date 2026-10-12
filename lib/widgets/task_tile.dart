@@ -1,0 +1,65 @@
+import 'package:flutter/material.dart';
+import '../models/task.dart';
+import '../theme/app_colors.dart';
+
+// #$ TaskTile — linha com ícone, título, progresso "2/3" e check de conclusão.
+class TaskTile extends StatelessWidget {
+  final GamifyTask task;
+  final ValueChanged<bool>? onToggle;
+
+  const TaskTile({super.key, required this.task, this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(color: task.iconColor.withOpacity(0.18), shape: BoxShape.circle),
+            child: Icon(task.icon, color: task.iconColor, size: 16),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(task.title,
+                    style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 13)),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Text('${task.currentQuantity}/${task.goalQuantity}',
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                    const SizedBox(width: 8),
+                    Text('+${task.xpReward} XP',
+                        style: const TextStyle(color: AppColors.primaryGreen, fontSize: 11, fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.monetization_on, color: AppColors.gold, size: 12),
+                    const SizedBox(width: 2),
+                    Text('${task.goldReward}', style: const TextStyle(color: AppColors.gold, fontSize: 11)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () => onToggle?.call(!task.isDone),
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: task.isDone ? AppColors.primaryGreen : Colors.transparent,
+                border: Border.all(color: task.isDone ? AppColors.primaryGreen : AppColors.border, width: 1.5),
+              ),
+              child: task.isDone ? const Icon(Icons.check, size: 16, color: Colors.black) : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
