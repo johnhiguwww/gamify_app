@@ -39,11 +39,11 @@ out/
 # Arquivos
 .env
 *.http
-
-### Logs da aplicação ###
-Logs/
-logs/
-
 .dart_tool/
+.flutter-plugins-dependencies
+.firebase/
+.agents/
 gradle/
 src/
+build.gradle
+skills-lock.json

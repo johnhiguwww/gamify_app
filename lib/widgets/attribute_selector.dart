@@ -18,15 +18,16 @@ class AttributeOption {
 }
 
 final attributeOptions = <AttributeOption>[
+  AttributeOption(label: 'Saúde', icon: Icons.directions_run, color: AppColors.inteligencia, type: AttributeType.forca),
   AttributeOption(label: AttributeType.inteligencia.label, icon: AttributeType.inteligencia.icon, color: attributeColor(AttributeType.inteligencia), type: AttributeType.inteligencia),
-  AttributeOption(label: AttributeType.forca.label, icon: AttributeType.forca.icon, color: attributeColor(AttributeType.forca), type: AttributeType.forca),
   AttributeOption(label: AttributeType.espiritualidade.label, icon: AttributeType.espiritualidade.icon, color: attributeColor(AttributeType.espiritualidade), type: AttributeType.espiritualidade),
+  AttributeOption(label: AttributeType.linguagem.label, icon: AttributeType.linguagem.icon, color: attributeColor(AttributeType.linguagem), type: AttributeType.linguagem),
   AttributeOption(label: AttributeType.carisma.label, icon: AttributeType.carisma.icon, color: attributeColor(AttributeType.carisma), type: AttributeType.carisma),
   AttributeOption(label: AttributeType.percepcaoEspacial.label, icon: AttributeType.percepcaoEspacial.icon, color: attributeColor(AttributeType.percepcaoEspacial), type: AttributeType.percepcaoEspacial),
   AttributeOption(label: AttributeType.autoconsciencia.label, icon: AttributeType.autoconsciencia.icon, color: attributeColor(AttributeType.autoconsciencia), type: AttributeType.autoconsciencia),
-  AttributeOption(label: AttributeType.linguagem.label, icon: AttributeType.linguagem.icon, color: attributeColor(AttributeType.linguagem), type: AttributeType.linguagem),
   AttributeOption(label: AttributeType.raciocinioLogico.label, icon: AttributeType.raciocinioLogico.icon, color: attributeColor(AttributeType.raciocinioLogico), type: AttributeType.raciocinioLogico),
   AttributeOption(label: AttributeType.musicalidade.label, icon: AttributeType.musicalidade.icon, color: attributeColor(AttributeType.musicalidade), type: AttributeType.musicalidade),
+  const AttributeOption(label: 'Outro', icon: Icons.add, color: AppColors.textSecondary, type: null),
 ];
 
 class AttributeSelector extends StatelessWidget {
