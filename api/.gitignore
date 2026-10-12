@@ -1,0 +1,11 @@
+*.lock
+/.venv
+/__pycache__/
+*.pyc
+.DS_Store
+.pdm-build/
+.pdm-dist/
+.vscode/
+.venv/
+.idea/
+.env
