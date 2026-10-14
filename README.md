@@ -1,218 +1,242 @@
-# Gamify API
+# Gamify
 
-API REST do projeto Gamify, desenvolvida como parte de um Trabalho de Conclusão de Curso da UNIPÊ, em João Pessoa.
+App em Flutter e API em Java para acompanhar tarefas, missões, atributos e uma loja de recompensas. Quem for rodar precisa dos três: o app, a API e o banco. O Firebase já está ligado neste repositório.
 
-O projeto propõe uma abordagem de gamificação aplicada ao acompanhamento de pessoas com TDAH, explorando a teoria das 9 inteligências por meio de perfis, tarefas e missões. Este repositório contém apenas o backend da solução. O cliente será desenvolvido separadamente em Flutter.
+O celular **não** lê a tabela do Supabase direto. Ele chama a API Java. A API é quem entra no Postgres do Supabase.
 
-## Objetivo
-
-Esta API centraliza as regras e os dados da aplicação, permitindo:
-
-- consultar perfis de usuários;
-- recuperar tarefas associadas a um perfil;
-- cadastrar novas tarefas gamificadas;
-- cadastrar missões vinculadas a um perfil e, opcionalmente, a uma tarefa;
-- armazenar atributos relacionados às inteligências e ao progresso do usuário.
-
-## Stack utilizada
-
-- Java 26
-- Spring Boot 4.1.1
-- Spring Web MVC
-- Spring Data JPA
-- PostgreSQL
-- Lombok
-- SpringDoc OpenAPI / Swagger UI
-- Gradle
-
-## Estrutura do projeto
-
-Os principais pacotes estão organizados da seguinte forma:
-
-- `controllers`: exposição dos endpoints HTTP;
-- `services`: regras de negócio;
-- `repository`: acesso a dados com JPA;
-- `models/entities`: entidades persistidas no banco;
-- `models/dtos`: contratos de entrada e saída da API;
-- `utils`: enums, exceções e utilitários auxiliares.
-
-## Pré-requisitos
-
-Antes de executar a API, garanta que o ambiente tenha:
-
-- Java 26 instalado;
-- PostgreSQL em execução;
-- variáveis de ambiente do banco configuradas;
-- Gradle Wrapper disponível no projeto.
-
-## Configuração
-
-A aplicação lê variáveis de ambiente para montar a conexão com o PostgreSQL. Em ambiente local, elas podem ser fornecidas pelo sistema operacional ou por um arquivo `.env` na raiz do projeto.
-
-
-## Como executar
-
-### Windows
-
-```powershell
-.\gradlew.bat bootRun
+```text
+Flutter  →  API Java (porta 8080)  →  Postgres no Supabase
+                ↑
+           Firebase (projeto já marcado no app)
 ```
 
-### Linux/macOS
+## O que cada parte faz
+
+| Parte | Onde está | Função |
+|---|---|---|
+| App | `lib/` | Telas. Pasta `data` busca a API. Pasta `models` lê o JSON. |
+| API | `src/main/java` | Regras de perfil, tarefa, missão e loja. |
+| Banco | Supabase | Postgres. A API cria e atualiza as tabelas. |
+| Firebase | `.firebaserc`, `.firebase` | Projeto Firebase deste repositório. |
+
+Os models do app esperam o JSON da API Java (`experience`, `reward`, `atributes`). O REST automático do Supabase (`/rest/v1/...`) devolve outro formato e **não** serve nesses models.
+
+## O que instalar
+
+- Flutter (canal stable) e um aparelho ou emulador
+- Java 25 (é a versão do `build.gradle`)
+- Android Studio ou o SDK do Android, se for rodar no celular
+- Conta no projeto Supabase que guarda o banco
+- Firebase CLI, se for gerar de novo o arquivo do Firebase (`npm i -g firebase-tools`)
+
+## 1. Banco no Supabase
+
+No painel do Supabase, em **Project Settings → Database**, copie o host. O usuário do banco costuma ser `postgres`. A senha é a do banco, não a `anon key` e não a `service_role`.
+
+Crie um arquivo `.env` na **raiz do projeto** (ao lado do `gradlew`). A API lê esse arquivo. Não commite.
+
+```properties
+DB_HOST=db.eiyfmcjzhqqcrofllsjd.supabase.co
+DB_PORT=5432
+DB_DATABASE=postgres
+DB_USER=postgres
+DB_PASSWORD=[*************]
+# Dados de conexão com o Postgres do Supabase.
+# Pegue esses valores em: Supabase > Project Settings > Database
+# Use o "Session pooler" (porta 6543), não a conexão direta. 
+
+O env ta asim o da API 
+
+# URL pública da API Java (Cloudflare Tunnel) — sem barra no final
+API_BASE_URL=http://localhost:8080
+#https://simulation-democracy-attempt-karma.trycloudflare.com
+SUPABASE_URL= https://eiyfmcjzhqqcrofllsjd.supabase.co
+#db.eiyfmcjzhqqcrofllsjd.supabase.co
+# chave pública (anon / publishable) — nunca use a service_role aqui
+SUPABASE_ANON_KEY=sb_publishable_znaEWRyeirGQyC_E4kNbhg_hbR_s646
+PORT=3000
+```
+
+O Supabase exige SSL. A URL da API, do jeito que está em `application.properties`, não pede SSL. Se a API subir e a conexão for recusada, troque a linha do datasource para:
+
+```properties
+spring.datasource.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_DATABASE}?sslmode=require
+```
+
+A API usa `ddl-auto=update`: na primeira subida ela cria as tabelas (`profiles`, `attributes`, `tasks`, `missions`, `store`, `item`) se elas ainda não existirem.
+
+Não há endpoint público para criar perfil. O perfil precisa existir no banco antes do app buscar tarefas. O `user_id` é um UUID.
+
+## 2. API Java
+
+Na raiz do projeto:
 
 ```bash
 ./gradlew bootRun
 ```
 
-Por padrão, a aplicação sobe em:
-
-```text
-http://localhost:8080
-```
-
-## Como testar
-
-Para executar os testes automatizados:
-
-### Windows
+No Windows:
 
 ```powershell
-.\gradlew.bat test
+.\gradlew.bat bootRun
 ```
 
-### Linux/macOS
+A API sobe em `http://localhost:8080`.
+
+A API está conectada por uma URL publica: `https://jelsoft-benefit-season-solomon.trycloudflare.com` 
+
+Para ver se está no ar, abra:
+
+- Swagger: `http://localhost:8080/swagger-ui/index.html`
+- OpenAPI: `http://localhost:8080/v3/api-docs`
+
+
+Uma resposta 200 traz `userId`, `email`, `name`, `avatarUrl`, `level`, `experience`, `gold` e `atributes`. 404 significa que esse perfil não está no banco.
+
+### Endereços
+
+Perfil:
+
+| Método | Caminho | Para quê |
+|---|---|---|
+| GET | `/profiles/by-user-uuid/{uuid}` | Perfil completo |
+| GET | `/profiles/by-user-email/{email}` | O mesmo perfil, pelo e-mail |
+| GET | `/profiles/{uuid}/my_tasks` | Tarefas |
+| GET | `/profiles/{uuid}/my_missions` | Missões |
+| PUT | `/profiles/update/{uuid}` | Atualiza `name` e `avatarUrl` |
+
+Tarefa:
+
+| Método | Caminho | Para quê |
+|---|---|---|
+| POST | `/tasks/newtask` | Cria |
+| POST | `/tasks/complete` | Conclui. Corpo: `{ "taskId": "..." }` |
+| PUT | `/tasks/update?taskId=` | Atualiza |
+| PUT | `/tasks/complete-cycle/{taskId}` | Fecha o ciclo |
+| DELETE | `/tasks/{taskId}` | Remove |
+
+Missão:
+
+| Método | Caminho | Para quê |
+|---|---|---|
+| POST | `/missions/new` | Cria |
+| PUT | `/missions/complete?missionId=` | Conclui |
+| PUT | `/missions/update?missionId=` | Atualiza |
+| DELETE | `/missions?missionId=` | Remove |
+
+Loja:
+
+| Método | Caminho | Para quê |
+|---|---|---|
+| GET | `/profiles/{uuid}/mystore` | Loja e itens |
+| POST | `/profiles/{uuid}/addItem` | Cria item. Corpo: `{ "name", "value" }` |
+| PUT | `/profiles/{profileId}/updateItem/{itemId}` | Atualiza |
+| DELETE | `/profiles/{profileId}/deleteItem/{itemId}` | Remove, se ainda não foi comprado |
+| PUT | `/profiles/{profileId}/purchaseItem/{itemId}` | Compra com o ouro do perfil |
+
+## 3. Firebase
+
+O repositório já tem `.firebaserc` e a pasta `.firebase`. Esse é o projeto Firebase do app. Quem for rodar precisa de acesso a esse projeto.
 
 ```bash
-./gradlew test
+firebase login
+firebase projects:list
 ```
 
-## Documentação da API
+O alias dentro do `.firebaserc` tem que ser um projeto em que essa conta entra. Os arquivos `google-services.json` (Android) e `GoogleService-Info.plist` (iOS) não vão para o Git. Se faltarem, gere de novo na pasta do app:
 
-Com a aplicação em execução, a documentação interativa pode ser acessada em:
-
-- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
-- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
-
-## Endpoints principais
-
-### Perfis
-
-#### Buscar perfil por e-mail
-
-```http
-GET /profiles/by-user-email/{email}
+```bash
+dart pub global activate flutterfire_cli
+flutterfire configure
 ```
 
-Retorna os dados de um perfil com:
+O app só usa o Firebase para o que o `main.dart` já inicializa. Perfil, tarefa, missão e loja vêm da API Java, não do Firestore.
 
-- `userId`
-- `email`
-- `name`
-- `avatarUrl`
-- `level`
-- `experience`
-- `gold`
-- `atributes`
+## 4. App Flutter
 
-#### Buscar perfil por UUID
+Entre na pasta do app (a que tem `pubspec.yaml` e `lib/`).
 
-```http
-GET /profiles/by-user-uuid/{uuid}
+```bash
+flutter pub get
+flutter run
 ```
 
-#### Listar tarefas de um perfil
+O pacote `http` precisa estar no `pubspec.yaml`. Se não estiver:
 
-```http
-GET /profiles/{uuid}/my_tasks
+```bash
+flutter pub add http
 ```
 
-### Tarefas
+No celular físico, `localhost` é o próprio celular. Use o IP da máquina onde a API está rodando, por exemplo `http://192.168.0.10:8080`. Emulador Android costuma alcançar o computador por `http://10.0.2.2:8080`.
 
-#### Criar nova tarefa
+Não coloque `DB_PASSWORD` dentro do app. O app só precisa do endereço da API.
 
-```http
-POST /tasks/newtask
-Content-Type: application/json
+O arquivo que busca os dados é `lib/data/gamify_api.dart`. O `mockup_data.dart` não é mais a fonte. Se alguma tela ainda usar `MockData`, ela continua mostrando João e a faixa verde, sem olhar o banco.
+
+```dart
+final api = GamifyApi(baseUrl: 'http://10.0.2.2:8080');
+
+final tela = await api.loadProfileScreen(userId);
+final loja = await api.loadStore(userId);
 ```
 
-Exemplo de payload:
+`loadProfileScreen` junta três GET: o perfil, `my_tasks` e `my_missions`. A loja é outra chamada.
 
-```json
-{
-  "profileUuid": "eb01b1fc-5ca0-49fe-85e1-264dd781ed7c",
-  "title": "Estudar 30 minutos",
-  "description": "Revisar o conteúdo planejado para o dia",
-  "reward": 25,
-  "experience": 40,
-  "frequency": "DAILY",
-  "scheduledTime": "19:30",
-  "daysOfWeek": ["MONDAY", "WEDNESDAY", "FRIDAY"],
-  "expirationDate": "2026-12-31T23:59:59.000Z",
-  "partOfMission": false
-}
-```
+### Onde fica cada arquivo
 
-Campos relevantes:
+| Arquivo | Pasta no app |
+|---|---|
+| `attribute.dart`, `mission.dart`, `task.dart`, `store_item.dart`, `user_profile.dart`, `profile_resume.dart`, `json_read.dart` | `lib/models/` |
+| `gamify_api.dart` | `lib/data/` |
 
-- `frequency`: aceita `UNIQUE`, `DAILY`, `WEEKLY` ou `MONTHLY`;
-- `daysOfWeek`: aceita valores como `MONDAY`, `TUESDAY`, `WEDNESDAY`, `THURSDAY`, `FRIDAY`, `SATURDAY` e `SUNDAY`;
-- `scheduledTime`: horário opcional no formato `HH:mm`;
-- `expirationDate`: data opcional de expiração;
-- `partOfMission`: indica se a tarefa pertence a uma missão.
+Na tela, o texto é em português. O JSON continua em inglês.
 
-### Missões
+| A pessoa lê | O JSON leva |
+|---|---|
+| Inteligência | `intelligence` |
+| Força | `strength` |
+| Espiritualidade | `spirituality` |
+| Carisma | `charisma` |
+| Percepção Espacial | `spatialPerception` no perfil, `spatial_perception` na tarefa |
+| Autoconsciência | `selfAwareness` no perfil, `self_awareness` na tarefa |
+| Linguagem | `language` |
+| Raciocínio Lógico | `logicalReasoning` no perfil, `logical_reasoning` na tarefa |
+| Musicalidade | `musicality` |
+| Única, Diária, Semanal, Mensal | `UNIQUE`, `DAILY`, `WEEKLY`, `MONTHLY` |
+| Pendente, Concluída | `PENDING`, `COMPLETED` |
+| Ativa, Concluída (missão) | `finished` false ou true |
+| Segunda … Domingo | `MONDAY` … `SUNDAY` |
 
-#### Criar nova missão
+Use `atributosEmPortugues`, `frequencyLabel`, `finishedLabel` e `daysOfWeekLabels`. Não escreva a chave inglesa na tela.
 
-```http
-POST /missions/new
-Content-Type: application/json
-```
+## Cuidados que já estão na API
 
-Exemplo de payload:
+- A chave dos atributos no perfil é `atributes`, com essa grafia. Não "corrija" para `attributes` no app.
+- A tarefa pede o atributo na criação (`attributes`), mas o GET da tarefa **não devolve** esse campo.
+- Concluir tarefa soma `reward` no ouro e o mesmo `reward` no atributo. O campo `experience` da tarefa é gravado e não é aplicado.
+- Concluir missão soma `experience` no perfil e `reward` no ouro. Não mexe no atributo.
+- `level` não sobe sozinho quando `experience` aumenta. Não existe `rank` nem `maxXp` na API.
+- Em missão, `tasks` é uma tarefa ou `null`, não uma lista.
+- Em tarefa, `finished` é o texto `PENDING` ou `COMPLETED`. Em missão, `finished` é booleano.
+- Não existe "tarefas de hoje". `loadTasks` devolve todas.
+- Item comprado continua na loja, com `purchase_at` preenchido. O POST manda `name`; a resposta devolve `title`.
 
-```json
-{
-  "userId": "eb01b1fc-5ca0-49fe-85e1-264dd781ed7c",
-  "title": "Concluir rotina da semana",
-  "reward": 50,
-  "experience": 100,
-  "taskId": "ab253afa-fdd5-4a14-9666-9f78cfa6cf88"
-}
-```
+## Ordem para subir
 
-O campo `taskId` é opcional e pode ser usado para associar a missão a uma tarefa já existente.
+1. Confira o `.env` com o host do Supabase.
+2. Suba a API (`./gradlew bootRun`) e abra o Swagger.
+3. Confira um perfil real com o `curl` acima.
+4. Aponte o `GamifyApi` para essa URL.
+5. Rode o Flutter (`flutter build web`& `flutter run`). (Se quiser subir só para o Flutter `flutter run -d chrome`)  
+  
+## Link's de outras documentações 
+[Sistemas de comentarios](./sistema-de-comentarios.md)
 
-## Modelo de domínio
 
-Atualmente, o perfil do usuário mantém dados de progresso gamificado, incluindo:
+[GOOGLE](./LEIA_ME_GOOGLE_API.md)
 
-- nível;
-- experiência;
-- ouro;
-- atributos associados às inteligências e características do usuário.
 
-Os atributos persistidos hoje na API são:
+[Supabase](./LEIA_ME_SUPABASE.md)
 
-- `strength`
-- `spirituality`
-- `intelligence`
-- `charisma`
-- `spatialPerception`
-- `selfAwareness`
-- `language`
-- `logicalReasoning`
-- `musicality`
 
-## Informações importantes
-
-- Este repositório representa somente a camada de API do projeto.
-- O cliente da aplicação será desenvolvido em Flutter, em um projeto separado.
-- A aplicação usa `spring.jpa.hibernate.ddl-auto=update`, portanto o schema pode ser ajustado automaticamente conforme as entidades.
-- Os perfis são consultados pela API, mas neste estado atual não há endpoint público para criação de perfil neste projeto.
-- Para criar tarefas e missões, o perfil informado precisa existir previamente no banco.
-- O arquivo `requests.http` contém um exemplo simples de requisição para apoio em testes manuais.
-
-## Contexto acadêmico
-
-Este projeto integra um TCC da universidade UNIPÊ, em João Pessoa, com foco em gamificação e no apoio a pessoas com TDAH por meio de mecânicas de progresso, recompensas e exploração inspirada na teoria das 9 inteligências.
+[Deploy](./dar_deploy.md)

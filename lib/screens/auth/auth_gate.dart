@@ -59,7 +59,6 @@ class _AuthGateState extends State<AuthGate> {
       if (!mounted) return;
       setState(() {
         CurrentUser.profile = profile;
-        CurrentUser.userId = user.id;
         _loadedForUserId = user.id;
         _loading = false;
       });
@@ -69,7 +68,6 @@ class _AuthGateState extends State<AuthGate> {
       if (!mounted) return;
       setState(() {
         CurrentUser.profile = _fallbackProfile(user);
-        CurrentUser.userId = user.id;
         _loadedForUserId = user.id;
         _loading = false;
       });

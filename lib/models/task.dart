@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
 import 'attribute.dart';
 
-enum TaskFrequency { diaria, semanal, mensal, unica }
+enum TaskFrequency { daily, weekly, monthly, once }
 
+// #$ Extensão que adiciona o getter `label` ao enum TaskFrequency
 extension TaskFrequencyX on TaskFrequency {
+  // #f Devolve o texto em português mostrado na tela para cada frequência
+  // #r String com o rótulo (continua em português, como pedido)
   String get label => switch (this) {
-        TaskFrequency.diaria => 'Diária',
-        TaskFrequency.semanal => 'Semanal',
-        TaskFrequency.mensal => 'Mensal',
-        TaskFrequency.unica => 'Única',
+        // ## diaria -> daily
+        TaskFrequency.daily => 'Diária',
+        // ## semanal -> weekly
+        TaskFrequency.weekly => 'Semanal',
+        // ## mensal -> monthly
+        TaskFrequency.monthly => 'Mensal',
+        // ## unica -> once
+        TaskFrequency.once => 'Única',
       };
 }
 
@@ -20,8 +27,6 @@ extension TaskFrequencyX on TaskFrequency {
 class GamifyTask {
   final String id;
   final String title;
-  final IconData icon;
-  final Color iconColor;
   final AttributeType? attribute;
   final String? missionId;
   final TaskFrequency frequency;
@@ -30,23 +35,19 @@ class GamifyTask {
   final int goalQuantity;
   final String goalUnit;
   final int currentQuantity; // #v progresso do ciclo atual (ex: 2/3)
-  final bool reminderEnabled;
   final String? description;
 
   const GamifyTask({
     required this.id,
     required this.title,
-    required this.icon,
-    required this.iconColor,
     this.attribute,
     this.missionId,
-    this.frequency = TaskFrequency.diaria,
+    this.frequency = TaskFrequency.daily,
     required this.xpReward,
     required this.goldReward,
     this.goalQuantity = 1,
     this.goalUnit = 'vez',
     this.currentQuantity = 0,
-    this.reminderEnabled = false,
     this.description,
   });
 
@@ -55,8 +56,6 @@ class GamifyTask {
   GamifyTask copyWith({int? currentQuantity}) => GamifyTask(
         id: id,
         title: title,
-        icon: icon,
-        iconColor: iconColor,
         attribute: attribute,
         missionId: missionId,
         frequency: frequency,
@@ -65,7 +64,6 @@ class GamifyTask {
         goalQuantity: goalQuantity,
         goalUnit: goalUnit,
         currentQuantity: currentQuantity ?? this.currentQuantity,
-        reminderEnabled: reminderEnabled,
         description: description,
       );
 }

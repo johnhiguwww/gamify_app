@@ -1561,8 +1561,6 @@ file:///S:/projeto/gamify/gamify/.dart_tool/flutter_build/d599ec19d587db062ccfd7
 file:///S:/projeto/gamify/gamify/.dart_tool/package_config.json
 file:///S:/projeto/gamify/gamify/lib/data/mock_data.dart
 file:///S:/projeto/gamify/gamify/lib/main.dart
-file:///S:/projeto/gamify/gamify/lib/models/api_mission.dart
-file:///S:/projeto/gamify/gamify/lib/models/api_task.dart
 file:///S:/projeto/gamify/gamify/lib/models/attribute.dart
 file:///S:/projeto/gamify/gamify/lib/models/mission.dart
 file:///S:/projeto/gamify/gamify/lib/models/store_item.dart
@@ -1585,7 +1583,6 @@ file:///S:/projeto/gamify/gamify/lib/services/gamify_api_service.dart
 file:///S:/projeto/gamify/gamify/lib/services/supabase_service.dart
 file:///S:/projeto/gamify/gamify/lib/theme/app_colors.dart
 file:///S:/projeto/gamify/gamify/lib/theme/app_theme.dart
-file:///S:/projeto/gamify/gamify/lib/widgets/api_task_tile.dart
 file:///S:/projeto/gamify/gamify/lib/widgets/app_bottom_nav.dart
 file:///S:/projeto/gamify/gamify/lib/widgets/attribute_row.dart
 file:///S:/projeto/gamify/gamify/lib/widgets/attribute_selector.dart
@@ -1593,6 +1590,7 @@ file:///S:/projeto/gamify/gamify/lib/widgets/form_bits.dart
 file:///S:/projeto/gamify/gamify/lib/widgets/gamify_progress_bar.dart
 file:///S:/projeto/gamify/gamify/lib/widgets/mission_card.dart
 file:///S:/projeto/gamify/gamify/lib/widgets/section_card.dart
+file:///S:/projeto/gamify/gamify/lib/widgets/task_tile.dart
 org-dartlang-sdk:///dart-sdk/lib/_http/crypto.dart
 org-dartlang-sdk:///dart-sdk/lib/_http/embedder_config.dart
 org-dartlang-sdk:///dart-sdk/lib/_http/http.dart

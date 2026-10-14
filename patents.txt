@@ -412,7 +412,6 @@ class Patents {
         'O Silêncio Final e Eterno', 
         'O Panteão de Um Homem Só', 
         'O Fim da Jornada e o Início de Tudo',
-        //Lisan al Gaib
         'MuadDib',
         'Lisan al Gaib'
     ];

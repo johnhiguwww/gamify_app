@@ -39,33 +39,19 @@ extension AttributeTypeX on AttributeType {
         AttributeType.raciocinioLogico => Icons.route,
         AttributeType.musicalidade => Icons.music_note,
       };
-
-  String get apiKey => switch (this) {
-        AttributeType.inteligencia => 'intelligence',
-        AttributeType.forca => 'strength',
-        AttributeType.espiritualidade => 'spirituality',
-        AttributeType.carisma => 'charisma',
-        AttributeType.percepcaoEspacial => 'spatial_perception',
-        AttributeType.autoconsciencia => 'self_awareness',
-        AttributeType.linguagem => 'language',
-        AttributeType.raciocinioLogico => 'logical_reasoning',
-        AttributeType.musicalidade => 'musicality',
-      };
 }
 
 // #$ AttributeProgress — estado atual de um atributo pro usuário logado.
 class AttributeProgress {
   final AttributeType type;
-  final int level;
-  final int currentXp;
-  final int maxXp; // #v teto do nível atual (regra: 100 + 10*(nível-1))
+  final int level; 
+// #v teto do nível atual (regra: 100 + 10*(nível-1))
+  final int maxXp; 
 
   const AttributeProgress({
     required this.type,
     required this.level,
-    required this.currentXp,
     required this.maxXp,
   });
 
-  double get ratio => maxXp == 0 ? 0 : (currentXp / maxXp).clamp(0, 1);
 }
