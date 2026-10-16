@@ -41,17 +41,28 @@ extension AttributeTypeX on AttributeType {
       };
 }
 
-// #$ AttributeProgress — estado atual de um atributo pro usuário logado.
+// #$ AttributeProgress — progresso de um atributo do usuário logado.
+// #v currentXp vem direto de `atributes.<campo>` da API; o teto é sempre 100
+// #$ AttributeProgress — progresso de um atributo do usuário logado.
+// #v total vem direto de `atributes.<campo>` da API (acumulado); o teto é sempre 100
 class AttributeProgress {
   final AttributeType type;
-  final int level; 
-// #v teto do nível atual (regra: 100 + 10*(nível-1))
-  final int maxXp; 
+  final int total;
 
   const AttributeProgress({
     required this.type,
-    required this.level,
-    required this.maxXp,
+    required this.total,
   });
 
+  // #v teto fixo de todo atributo (só o nível sobe, o teto não)
+  int get maxXp => 100;
+
+  // #v nível do atributo: 1 até 99, 2 de 100 a 199, e assim por diante
+  int get level => (total < 0 ? 0 : total) ~/ maxXp + 1;
+
+  // #v XP dentro do nível atual (0 a 99)
+  int get currentXp => (total < 0 ? 0 : total) % maxXp;
+
+  // #v proporção de 0 a 1 usada pela barra de progresso
+  double get ratio => currentXp / maxXp;
 }

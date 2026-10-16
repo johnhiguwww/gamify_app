@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
 import '../models/mission.dart';
 import '../theme/app_colors.dart';
-import 'attribute_row.dart';
 import 'gamify_progress_bar.dart';
 
 // #$ MissionCard — detailed=false é a versão mini usada no dashboard
 // (Figura 3); detailed=true é a linha completa da tela Missões (Figura 6).
+// Na versão detalhada só aparece o que a API devolve: título, XP, ouro e
+// se a missão foi concluída (finished), mais o botão de concluir.
 class MissionCard extends StatelessWidget {
   final Mission mission;
   final bool detailed;
   final VoidCallback? onTap;
   final VoidCallback? onMenuTap;
+
+  // #v onComplete: PUT /missions/complete; completing: envio em andamento
+  final VoidCallback? onComplete;
+  final bool completing;
 
   const MissionCard({
     super.key,
@@ -18,13 +23,9 @@ class MissionCard extends StatelessWidget {
     this.detailed = false,
     this.onTap,
     this.onMenuTap,
+    this.onComplete,
+    this.completing = false,
   });
-
-  Color get _difficultyColor => switch (mission.difficulty) {
-        MissionDifficulty.facil => AppColors.facil,
-        MissionDifficulty.media => AppColors.media,
-        MissionDifficulty.alta => AppColors.alta,
-      };
 
   @override
   Widget build(BuildContext context) {
@@ -73,30 +74,50 @@ class MissionCard extends StatelessWidget {
                   ],
                 ),
                 if (detailed) ...[
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(attributeDisplayLabel(mission.attribute),
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
-                      Container(width: 4, height: 4, decoration: BoxDecoration(color: _difficultyColor, shape: BoxShape.circle)),
-                      Text(mission.difficulty.label, style: TextStyle(color: _difficultyColor, fontSize: 11.5)),
-                    ],
-                  ),
+                  const SizedBox(height: 6),
+                  // #if concluída: selo; senão, botão de concluir (se a tela passou onComplete)
+                  if (mission.status == MissionStatus.concluida)
+                    const Row(
+                      children: [
+                        Icon(Icons.check_circle, color: AppColors.primaryGreen, size: 15),
+                        SizedBox(width: 5),
+                        Text('Concluída', style: TextStyle(color: AppColors.primaryGreen, fontSize: 12)),
+                      ],
+                    )
+                  else if (onComplete != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: completing ? null : onComplete,
+                        icon: completing
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.check, size: 16, color: AppColors.primaryGreen),
+                        label: const Text('Concluir',
+                            style: TextStyle(color: AppColors.primaryGreen, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.primaryGreen),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
                 ],
-                const SizedBox(height: 8),
-                GamifyProgressBar(ratio: mission.progress, height: 6),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('${(mission.progress * 100).round()}%',
-                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                    if (detailed)
-                      Text('${mission.daysLeft} dias restantes',
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11))
-                    else
+                // ## barra de progresso só na versão mini (dashboard)
+                if (!detailed) ...[
+                  const SizedBox(height: 8),
+                  GamifyProgressBar(ratio: mission.progress, height: 6),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('${(mission.progress * 100).round()}%',
+                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                       Row(children: [
                         Text('+${mission.xpReward} XP',
                             style: const TextStyle(color: AppColors.primaryGreen, fontSize: 11, fontWeight: FontWeight.w700)),
@@ -105,8 +126,9 @@ class MissionCard extends StatelessWidget {
                         const SizedBox(width: 2),
                         Text('${mission.goldReward}', style: const TextStyle(color: AppColors.gold, fontSize: 11)),
                       ]),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

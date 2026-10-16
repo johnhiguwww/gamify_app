@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../models/attribute.dart';
 import '../models/task.dart';
 import '../services/auth_service.dart';
 import '../services/gamify_api_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/attribute_selector.dart';
 import '../widgets/form_bits.dart';
-
-const _xpChoices = [10, 20, 30, 50, 80, 120, 150, 200];
-const _goldChoices = [5, 10, 15, 20, 30, 50, 80];
-const _unitChoices = ['vez', 'vezes', 'min', 'páginas', 'km', 'contatos'];
 
 class NewTaskScreen extends StatefulWidget {
   const NewTaskScreen({super.key});
@@ -20,27 +18,47 @@ class NewTaskScreen extends StatefulWidget {
 class _NewTaskScreenState extends State<NewTaskScreen> {
   final _titleController = TextEditingController(text: 'Ler 10 páginas');
   final _descController = TextEditingController();
-  final _quantityController = TextEditingController(text: '10');
+  // #v XP e Gold são digitados pelo usuário (começam vazios, sem valor fixo)
+  final _xpController = TextEditingController();
+  final _goldController = TextEditingController();
 
   AttributeOption _attribute = attributeOptions[1]; // #v default: Inteligência, como na Figura
   TaskFrequency _frequency = TaskFrequency.daily;
-  int _xp = 120;
-  int _gold = 30;
-  String _unit = 'páginas';
-  bool _reminder = false;
   bool _saving = false;
 
-  // #f _frequencyToApi — mapeia o enum local pro valor esperado pelo
-  // backend Java (UNICA, DIARIO, SEMANAL, MENSAL).
+  // #v valores digitados; a API exige mínimo 1 em reward e experience
+  int get _xp => int.tryParse(_xpController.text) ?? 0;
+  int get _gold => int.tryParse(_goldController.text) ?? 0;
+
+  // #v "Outro" (type == null) não tem atributo na API, então não salva
+  bool get _canSave =>
+      _titleController.text.trim().isNotEmpty && _xp >= 1 && _gold >= 1 && _attribute.type != null && !_saving;
+
+  // #f _frequencyToApi — mapeia o enum local pro TaskFrequencyEnum do Java
+  // (UNIQUE, DAILY, WEEKLY, MONTHLY).
   String _frequencyToApi(TaskFrequency f) => switch (f) {
-        TaskFrequency.daily => 'DIARIO',
-        TaskFrequency.weekly => 'SEMANAL',
-        TaskFrequency.monthly => 'MENSAL',
-        TaskFrequency.once => 'UNICA',
+        TaskFrequency.daily => 'DAILY',
+        TaskFrequency.weekly => 'WEEKLY',
+        TaskFrequency.monthly => 'MONTHLY',
+        TaskFrequency.once => 'UNIQUE',
+      };
+
+  // #f _attributeToApi — mapeia o AttributeType pro AttributesLebels do Java
+  // (snake_case, diferente das chaves camelCase do perfil).
+  String _attributeToApi(AttributeType t) => switch (t) {
+        AttributeType.inteligencia => 'intelligence',
+        AttributeType.forca => 'strength',
+        AttributeType.espiritualidade => 'spirituality',
+        AttributeType.carisma => 'charisma',
+        AttributeType.percepcaoEspacial => 'spatial_perception',
+        AttributeType.autoconsciencia => 'self_awareness',
+        AttributeType.linguagem => 'language',
+        AttributeType.raciocinioLogico => 'logical_reasoning',
+        AttributeType.musicalidade => 'musicality',
       };
 
   Future<void> _submit() async {
-    if (_titleController.text.trim().isEmpty || _saving) return;
+    if (!_canSave) return;
     setState(() => _saving = true);
     try {
       final userId = AuthService.instance.currentUser?.id;
@@ -53,10 +71,12 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
         description: _descController.text.trim().isEmpty ? _titleController.text.trim() : _descController.text.trim(),
         reward: _gold,
         experience: _xp,
+        attributes: _attributeToApi(_attribute.type!),
         frequency: _frequencyToApi(_frequency),
-        // #!! ainda não existe seletor de dias da semana na tela; usamos
-        // segunda-feira como padrão quando a frequência é semanal.
-        daysOfWeek: _frequency == TaskFrequency.weekly ? ['MON'] : null,
+        // #!! a API guarda UM dia, com o nome por extenso (MONDAY..SUNDAY);
+        // "MON" seria descartado. Ainda não existe seletor de dia na tela,
+        // então usamos segunda-feira quando a frequência é semanal.
+        daysOfWeek: _frequency == TaskFrequency.weekly ? ['MONDAY'] : null,
       );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
@@ -73,7 +93,7 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
   @override
   void initState() {
     super.initState();
-    for (final c in [_titleController, _descController, _quantityController]) {
+    for (final c in [_titleController, _descController, _xpController, _goldController]) {
       c.addListener(() => setState(() {}));
     }
   }
@@ -82,14 +102,13 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
   void dispose() {
     _titleController.dispose();
     _descController.dispose();
-    _quantityController.dispose();
+    _xpController.dispose();
+    _goldController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final quantity = int.tryParse(_quantityController.text) ?? 0;
-
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -116,7 +135,7 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                   ),
                 ),
                 TextButton(
-                  onPressed: (_titleController.text.trim().isEmpty || _saving) ? null : _submit,
+                  onPressed: _canSave ? _submit : null,
                   child: _saving
                       ? const SizedBox(
                           width: 16,
@@ -153,24 +172,22 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const FormLabel('Recompensa', tooltip: 'XP e Gold ganhos a cada conclusão'),
-                      MetricPill(
-                        icon: Icons.bolt,
-                        iconColor: AppColors.primaryGreen,
-                        label: 'XP',
-                        value: '+$_xp',
-                        caption: '',
-                        showChevron: true,
-                        onTap: () => _pickFromList(context, title: 'XP', options: _xpChoices, onPick: (v) => setState(() => _xp = v)),
+                      const Text('XP', style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+                      const SizedBox(height: 4),
+                      TextField(
+                        controller: _xpController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(9)],
+                        decoration: const InputDecoration(isDense: true, hintText: 'Ex: 120'),
                       ),
                       const SizedBox(height: 8),
-                      MetricPill(
-                        icon: Icons.monetization_on,
-                        iconColor: AppColors.gold,
-                        label: 'Gold',
-                        value: '+$_gold',
-                        caption: '',
-                        showChevron: true,
-                        onTap: () => _pickFromList(context, title: 'Gold', options: _goldChoices, onPick: (v) => setState(() => _gold = v)),
+                      const Text('Gold', style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+                      const SizedBox(height: 4),
+                      TextField(
+                        controller: _goldController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(9)],
+                        decoration: const InputDecoration(isDense: true, hintText: 'Ex: 30'),
                       ),
                     ],
                   ),
@@ -182,58 +199,6 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                     children: [
                       const FormLabel('Frequência', tooltip: 'De quanto em quanto tempo a tarefa reinicia'),
                       _FrequencyGrid(current: _frequency, onChanged: (f) => setState(() => _frequency = f)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const FormLabel('Meta', tooltip: 'Quantidade necessária para concluir o ciclo'),
-                      const Text('Quantidade', style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
-                      const SizedBox(height: 4),
-                      TextField(
-                        controller: _quantityController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(isDense: true),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text('Unidade', style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
-                      const SizedBox(height: 4),
-                      DropdownButtonFormField<String>(
-                        value: _unit,
-                        dropdownColor: AppColors.surfaceAlt,
-                        decoration: const InputDecoration(isDense: true),
-                        items: [for (final u in _unitChoices) DropdownMenuItem(value: u, child: Text(u))],
-                        onChanged: (v) => setState(() => _unit = v ?? _unit),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const FormLabel('Lembrete', tooltip: 'Receba uma notificação no horário definido'),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.notifications_none, size: 16, color: AppColors.primaryGreen),
-                            const SizedBox(width: 6),
-                            const Expanded(child: Text('Adicionar lembrete', style: TextStyle(color: AppColors.textPrimary, fontSize: 12))),
-                            Switch(value: _reminder, onChanged: (v) => setState(() => _reminder = v)),
-                          ],
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -302,39 +267,6 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 4),
-            if (quantity > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text('Meta: $quantity $_unit por ciclo (${_frequency.label.toLowerCase()})',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _pickFromList(BuildContext context, {required String title, required List<int> options, required ValueChanged<int> onPick}) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text('Escolha o valor de $title', style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
-            ),
-            for (final v in options)
-              ListTile(
-                title: Text('+$v', style: const TextStyle(color: AppColors.textPrimary)),
-                onTap: () {
-                  onPick(v);
-                  Navigator.of(context).pop();
-                },
-              ),
           ],
         ),
       ),

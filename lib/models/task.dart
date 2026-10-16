@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'attribute.dart';
 
-enum TaskFrequency { daily, weekly, monthly, once }
+enum TaskFrequency { daily, weekly, monthly, once };
 
 // #$ Extensão que adiciona o getter `label` ao enum TaskFrequency
 extension TaskFrequencyX on TaskFrequency {
@@ -17,7 +17,7 @@ extension TaskFrequencyX on TaskFrequency {
         // ## unica -> once
         TaskFrequency.once => 'Única',
       };
-}
+};
 
 // #$ GamifyTask — #!! duas naturezas possíveis:
 // - vinculada a uma missão (missionId != null): contribui pro progresso % da
@@ -27,43 +27,74 @@ extension TaskFrequencyX on TaskFrequency {
 class GamifyTask {
   final String id;
   final String title;
+  final IconData icon;
+  final Color iconColor;
   final AttributeType? attribute;
-  final String? missionId;
+  // #v a API só diz se a tarefa faz parte de uma missão, não de qual
+  final bool partOfMission;
   final TaskFrequency frequency;
   final int xpReward;
   final int goldReward;
-  final int goalQuantity;
-  final String goalUnit;
-  final int currentQuantity; // #v progresso do ciclo atual (ex: 2/3)
+  // #v API: completedInCurrentCycle
+  final bool completedInCurrentCycle;
+  // #v API: finished vem como "COMPLETED" ou "PENDING"
+  final bool finished;
   final String? description;
 
   const GamifyTask({
     required this.id,
     required this.title,
+    required this.icon,
+    required this.iconColor,
     this.attribute,
-    this.missionId,
+    this.partOfMission = false,
     this.frequency = TaskFrequency.daily,
     required this.xpReward,
     required this.goldReward,
-    this.goalQuantity = 1,
-    this.goalUnit = 'vez',
-    this.currentQuantity = 0,
+    this.completedInCurrentCycle = false,
     this.description,
   });
 
-  bool get isDone => currentQuantity >= goalQuantity;
+  bool get isDone => finished || completedInCurrentCycle;
 
-  GamifyTask copyWith({int? currentQuantity}) => GamifyTask(
+  // #f fromJson: converte o TasksOutPutDTO da API em GamifyTask
+  // #p json: mapa vindo do jsonDecode
+  // #r GamifyTask pronta para as telas
+      GamifyTask copyWith({bool? completedInCurrentCycle}) => GamifyTask(
+          id: id,
+          title: title,
+          icon: icon,
+          iconColor: iconColor,
+          attribute: attribute,
+          partOfMission: partOfMission,
+          frequency: frequency,
+          xpReward: xpReward,
+          goldReward: goldReward,
+          completedInCurrentCycle: completedInCurrentCycle ?? this.completedInCurrentCycle,
+          finished: finished,
+          description: description,
+        );
+  }
+
+    GamifyTask copyWith({bool? completedInCurrentCycle}) => GamifyTask(
         id: id,
         title: title,
+        icon: icon,
+        iconColor: iconColor,
         attribute: attribute,
-        missionId: missionId,
+        partOfMission: partOfMission,
         frequency: frequency,
         xpReward: xpReward,
         goldReward: goldReward,
-        goalQuantity: goalQuantity,
-        goalUnit: goalUnit,
-        currentQuantity: currentQuantity ?? this.currentQuantity,
+        completedInCurrentCycle: completedInCurrentCycle ?? this.completedInCurrentCycle,
         description: description,
       );
-}
+
+
+// #f _frequencyFromApi: texto do TaskFrequencyEnum -> enum do app
+TaskFrequency _frequencyFromApi(String? value) => switch (value) {
+      'DAILY' => TaskFrequency.daily,
+      'WEEKLY' => TaskFrequency.weekly,
+      'MONTHLY' => TaskFrequency.monthly,
+      _ => TaskFrequency.once,
+};

@@ -1,4 +1,5 @@
 import './ranks.dart';
+import './attribute.dart';
 
 // #$ UserProfile — dados do cabeçalho do dashboard (Figura 3).
 class UserProfile {
@@ -10,6 +11,7 @@ class UserProfile {
   final int maxXp;
   final int gold;
   final String avatarUrl;
+  final List<AttributeProgress> attributes;
 
   const UserProfile({
     required this.name,
@@ -19,6 +21,7 @@ class UserProfile {
     required this.maxXp,
     required this.gold,
     required this.avatarUrl,
+    this.attributes = const [],
   });
 
   int get xpToNextLevel => maxXp - currentXp;
@@ -31,6 +34,23 @@ class UserProfile {
   factory UserProfile.fromApi(Map<String, dynamic> json) {
     final level = (json['level'] as num?)?.toInt() ?? 1;
     final experience = (json['experience'] as num?)?.toInt() ?? 0;
+    // #v atributo do app -> chave dentro de json['atributes'] (grafia da API)
+    const keys = {
+      AttributeType.inteligencia: 'intelligence',
+      AttributeType.forca: 'strength',
+      AttributeType.espiritualidade: 'spirituality',
+      AttributeType.carisma: 'charisma',
+      AttributeType.percepcaoEspacial: 'spatialPerception',
+      AttributeType.autoconsciencia: 'selfAwareness',
+      AttributeType.linguagem: 'language',
+      AttributeType.raciocinioLogico: 'logicalReasoning',
+      AttributeType.musicalidade: 'musicality',
+    };
+    final attrs = (json['atributes'] as Map<String, dynamic>?) ?? {};
+    final progress = [
+      for (final t in AttributeType.values)
+        AttributeProgress(type: t, total: (attrs[keys[t]] as num?)?.toInt() ?? 0),
+    ];
     return UserProfile(
       name: (json['name'] as String?) ?? 'Jogador',
       rank: _rankForLevel(level),
@@ -39,6 +59,7 @@ class UserProfile {
       maxXp: _maxXpForLevel(level),
       gold: (json['gold'] as num?)?.toInt() ?? 0,
       avatarUrl: (json['avatarUrl'] as String?) ?? '',
+      attributes: progress,
     );
   }
 

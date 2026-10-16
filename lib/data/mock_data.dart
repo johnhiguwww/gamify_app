@@ -20,18 +20,6 @@ class MockData {
     avatarUrl: '',
   );
 
-  static final attributes = <AttributeProgress>[
-    const AttributeProgress(type: AttributeType.inteligencia, level: 4, currentXp: 380, maxXp: 500),
-    const AttributeProgress(type: AttributeType.forca, level: 3, currentXp: 320, maxXp: 450),
-    const AttributeProgress(type: AttributeType.espiritualidade, level: 4, currentXp: 410, maxXp: 500),
-    const AttributeProgress(type: AttributeType.carisma, level: 3, currentXp: 360, maxXp: 450),
-    const AttributeProgress(type: AttributeType.percepcaoEspacial, level: 2, currentXp: 210, maxXp: 300),
-    const AttributeProgress(type: AttributeType.autoconsciencia, level: 2, currentXp: 260, maxXp: 300),
-    const AttributeProgress(type: AttributeType.linguagem, level: 3, currentXp: 330, maxXp: 450),
-    const AttributeProgress(type: AttributeType.raciocinioLogico, level: 3, currentXp: 280, maxXp: 450),
-    const AttributeProgress(type: AttributeType.musicalidade, level: 2, currentXp: 180, maxXp: 300),
-  ];
-
   static final missions = <Mission>[
     Mission(
       id: 'm1',
@@ -39,7 +27,6 @@ class MockData {
       icon: Icons.directions_run,
       iconColor: const Color(0xFF3B82F6),
       attribute: AttributeType.forca,
-      difficulty: MissionDifficulty.media,
       status: MissionStatus.ativa,
       progress: 0.60,
       xpReward: 300,
@@ -52,7 +39,6 @@ class MockData {
       icon: Icons.psychology_alt,
       iconColor: const Color(0xFFA855F7),
       attribute: AttributeType.inteligencia,
-      difficulty: MissionDifficulty.alta,
       status: MissionStatus.ativa,
       progress: 0.60,
       xpReward: 400,
@@ -65,7 +51,6 @@ class MockData {
       icon: Icons.translate,
       iconColor: const Color(0xFF3B82F6),
       attribute: AttributeType.linguagem,
-      difficulty: MissionDifficulty.media,
       status: MissionStatus.ativa,
       progress: 0.40,
       xpReward: 300,
@@ -78,7 +63,6 @@ class MockData {
       icon: Icons.self_improvement,
       iconColor: const Color(0xFFEC4899),
       attribute: AttributeType.espiritualidade,
-      difficulty: MissionDifficulty.facil,
       status: MissionStatus.ativa,
       progress: 0.28,
       xpReward: 150,
@@ -93,11 +77,9 @@ class MockData {
       title: 'Estudar IA por 45 min',
       icon: Icons.menu_book,
       iconColor: const Color(0xFF3B82F6),
-      missionId: 'm2',
+      partOfMission: true,
       xpReward: 25,
       goldReward: 10,
-      goalQuantity: 3,
-      currentQuantity: 2,
     ),
     GamifyTask(
       id: 't2',
@@ -107,19 +89,16 @@ class MockData {
       attribute: AttributeType.forca,
       xpReward: 20,
       goldReward: 10,
-      goalQuantity: 2,
-      currentQuantity: 1,
     ),
     GamifyTask(
       id: 't3',
       title: 'Meditar por 10 min',
       icon: Icons.self_improvement,
       iconColor: const Color(0xFFEC4899),
-      missionId: 'm4',
+      partOfMission: true,
       xpReward: 15,
       goldReward: 8,
-      goalQuantity: 2,
-      currentQuantity: 2,
+      completedInCurrentCycle: true,
     ),
     GamifyTask(
       id: 't4',
@@ -129,8 +108,6 @@ class MockData {
       attribute: AttributeType.carisma,
       xpReward: 20,
       goldReward: 10,
-      goalQuantity: 10,
-      currentQuantity: 0,
     ),
   ];
 

@@ -31,7 +31,7 @@ class TaskTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Row(
                   children: [
-                    Text('${task.currentQuantity}/${task.goalQuantity}',
+                    Text(task.frequency.label,
                         style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                     const SizedBox(width: 8),
                     Text('+${task.xpReward} XP',
