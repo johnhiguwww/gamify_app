@@ -287,8 +287,6 @@ class _Header extends StatelessWidget {
                 Text(user.rank,
                     style: const TextStyle(color: AppColors.primaryGreen, fontSize: 12)),
               ]),
-              const Text('Nível Global',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
             ],
           ),
         ),

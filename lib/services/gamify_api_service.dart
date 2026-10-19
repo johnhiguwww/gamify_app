@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../models/user_profile.dart';
 import '../models/mission.dart';
 import '../models/task.dart';
+import '../models/store_item.dart';
 import 'auth_service.dart';
 import 'current_user.dart';
 
@@ -35,7 +36,7 @@ class GamifyApiService {
       final profile = await fetchProfile(userId);
       if (profile != null) CurrentUser.profile = profile;
     } catch (_) {
-      // ## falhar ao atualizar o cabeçalho não pode atrapalhar a conclusão
+      // ## falhar ao atualizar o cabeçalho não pode atrapalhar a operação
     }
   }
 
@@ -170,6 +171,83 @@ class GamifyApiService {
     final response = await http.put(uri);
     if (response.statusCode != 200) {
       throw Exception('Erro ao concluir missão (${response.statusCode}): ${response.body}');
+    }
+    await _refreshCurrentProfile();
+  }
+
+  // ===================== LOJA =====================
+
+  // #f fetchStore — GET /profiles/{uuid}/mystore (StoreOutputDTO)
+  // #p userId: id do usuário (igual ao id do perfil)
+  // #r lista de itens; null se a API respondeu 404 (perfil ou loja inexistente)
+  Future<List<StoreItem>?> fetchStore(String userId) async {
+    final uri = Uri.parse('$baseUrl/profiles/$userId/mystore');
+    final response = await http.get(uri);
+    // #if 404: perfil ou loja não existem
+    if (response.statusCode == 404) return null;
+    if (response.statusCode != 200) {
+      throw Exception('Erro ao buscar loja (${response.statusCode}): ${response.body}');
+    }
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final items = (data['items'] as List<dynamic>?) ?? [];
+    return [for (final e in items) StoreItem.fromJson(e as Map<String, dynamic>)];
+  }
+
+  // #f addStoreItem — POST /profiles/{uuid}/addItem, corpo {name, value}
+  // #r void; a API responde 201 (404 se faltar perfil ou loja)
+  Future<void> addStoreItem({
+    required String userId,
+    required String name,
+    required int value,
+  }) async {
+    final uri = Uri.parse('$baseUrl/profiles/$userId/addItem');
+    final response = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'name': name, 'value': value}),
+    );
+    if (response.statusCode != 201 && response.statusCode != 200) {
+      throw Exception('Erro ao adicionar item (${response.statusCode}): ${response.body}');
+    }
+  }
+
+  // #f updateStoreItem — PUT /profiles/{profileId}/updateItem/{itemId}
+  // #r void; a API responde 200 (403 se o item não é do perfil)
+  Future<void> updateStoreItem({
+    required String userId,
+    required String itemId,
+    required String name,
+    required int value,
+  }) async {
+    final uri = Uri.parse('$baseUrl/profiles/$userId/updateItem/$itemId');
+    final response = await http.put(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'name': name, 'value': value}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Erro ao editar item (${response.statusCode}): ${response.body}');
+    }
+  }
+
+  // #f deleteStoreItem — DELETE /profiles/{profileId}/deleteItem/{itemId}
+  // #r void; a API responde 204 (409 se o item já foi comprado)
+  Future<void> deleteStoreItem({required String userId, required String itemId}) async {
+    final uri = Uri.parse('$baseUrl/profiles/$userId/deleteItem/$itemId');
+    final response = await http.delete(uri);
+    if (response.statusCode != 204 && response.statusCode != 200) {
+      throw Exception('Erro ao apagar item (${response.statusCode}): ${response.body}');
+    }
+  }
+
+  // #f purchaseStoreItem — PUT /profiles/{profileId}/purchaseItem/{itemId}
+  // #!! a API devolve só o item (não o perfil): recarregamos o perfil depois
+  // para o ouro do cabeçalho atualizar. 409 = ouro insuficiente.
+  Future<void> purchaseStoreItem({required String userId, required String itemId}) async {
+    final uri = Uri.parse('$baseUrl/profiles/$userId/purchaseItem/$itemId');
+    final response = await http.put(uri);
+    if (response.statusCode != 200) {
+      throw Exception('Erro ao comprar item (${response.statusCode}): ${response.body}');
     }
     await _refreshCurrentProfile();
   }
