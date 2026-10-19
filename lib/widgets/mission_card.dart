@@ -27,6 +27,10 @@ class MissionCard extends StatelessWidget {
     this.completing = false,
   });
 
+  // #f _fmt — DateTime vira dd/mm/aaaa
+  String _fmt(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
   @override
   Widget build(BuildContext context) {
     final content = Padding(
@@ -77,11 +81,16 @@ class MissionCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   // #if concluída: selo; senão, botão de concluir (se a tela passou onComplete)
                   if (mission.status == MissionStatus.concluida)
-                    const Row(
+                    Row(
                       children: [
-                        Icon(Icons.check_circle, color: AppColors.primaryGreen, size: 15),
-                        SizedBox(width: 5),
-                        Text('Concluída', style: TextStyle(color: AppColors.primaryGreen, fontSize: 12)),
+                        const Icon(Icons.check_circle, color: AppColors.primaryGreen, size: 15),
+                        const SizedBox(width: 5),
+                        Text(
+                          mission.finishedAt == null
+                              ? 'Concluída'
+                              : 'Concluída em ${_fmt(mission.finishedAt!)}',
+                          style: const TextStyle(color: AppColors.primaryGreen, fontSize: 12),
+                        ),
                       ],
                     )
                   else if (onComplete != null)
@@ -107,6 +116,11 @@ class MissionCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                  if (mission.createdAt != null) ...[
+                    const SizedBox(height: 6),
+                    Text('Criada em ${_fmt(mission.createdAt!)}',
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                  ],
                 ],
                 // ## barra de progresso só na versão mini (dashboard)
                 if (!detailed) ...[

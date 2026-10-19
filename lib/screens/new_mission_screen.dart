@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
-import '../models/mission.dart';
+import 'package:flutter/services.dart';
 import '../services/auth_service.dart';
 import '../services/gamify_api_service.dart';
 import '../theme/app_colors.dart';
-import '../widgets/attribute_selector.dart';
 import '../widgets/form_bits.dart';
 
+// #$ NewMissionScreen — só envia o que o POST /missions/new aceita:
+// userId, title, experience e reward (todos obrigatórios; os números >= 0).
+// ## visual alinhado com a NewTaskScreen (cabeçalho, contador, prévia),
+// mas SEM campos que a API de missão não aceita.
 class NewMissionScreen extends StatefulWidget {
   const NewMissionScreen({super.key});
 
@@ -14,21 +17,46 @@ class NewMissionScreen extends StatefulWidget {
 }
 
 class _NewMissionScreenState extends State<NewMissionScreen> {
+  // #v controladores dos três campos
   final _titleController = TextEditingController();
-  final _descController = TextEditingController();
-  AttributeOption? _attribute;
-  DateTime? _startDate;
-  DateTime? _endDate;
-  MissionKind _kind = MissionKind.individual;
+  final _xpController = TextEditingController();
+  final _goldController = TextEditingController();
 
-  // #v recompensa é somente informativa aqui — #t regra de cálculo (baseada
-  // em dificuldade/duração) fica a cargo do backend quando integrar.
-  final int _xp = 0;
-  final int _gold = 0;
+  // #v true enquanto o POST está em andamento
   bool _saving = false;
 
+  // #!! limite só visual (contador); a API não foi conferida quanto ao tamanho do título
+  static const int _titleMax = 60;
+
+  // #f _xp / _gold — valor digitado como int (null se vazio ou inválido)
+  int? get _xp => int.tryParse(_xpController.text.trim());
+  int? get _gold => int.tryParse(_goldController.text.trim());
+
+  // #f _canSubmit — título preenchido, XP e ouro informados e sem envio em andamento
+  bool get _canSubmit =>
+      _titleController.text.trim().isNotEmpty && _xp != null && _gold != null && !_saving;
+
+  @override
+  void initState() {
+    super.initState();
+    // #!! reconstrói ao digitar para habilitar/desabilitar o botão e atualizar a prévia
+    for (final c in [_titleController, _xpController, _goldController]) {
+      c.addListener(() => setState(() {}));
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _xpController.dispose();
+    _goldController.dispose();
+    super.dispose();
+  }
+
+  // #f _submit — POST /missions/new
   Future<void> _submit() async {
-    if (_titleController.text.trim().isEmpty || _saving) return;
+    // #if não pode enviar: sai sem fazer nada
+    if (!_canSubmit) return;
     setState(() => _saving = true);
     try {
       final userId = AuthService.instance.currentUser?.id;
@@ -36,8 +64,8 @@ class _NewMissionScreenState extends State<NewMissionScreen> {
       await GamifyApiService.instance.createMission(
         userId: userId,
         title: _titleController.text.trim(),
-        reward: _gold,
-        experience: _xp,
+        reward: _gold!,
+        experience: _xp!,
       );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
@@ -51,159 +79,202 @@ class _NewMissionScreenState extends State<NewMissionScreen> {
     }
   }
 
-  @override
-  void initState() {
-    super.initState();
-    // #!! reconstrói ao digitar pra habilitar/desabilitar "Criar Missão" em tempo real.
-    _titleController.addListener(() => setState(() {}));
-  }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _descController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickDate({required bool isStart}) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
-    );
-    if (picked == null) return;
-    setState(() => isStart ? _startDate = picked : _endDate = picked);
-  }
-
-  String _fmt(DateTime? d) => d == null ? '' : '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  // ## só dígitos (sem negativo), até 9 dígitos para caber no Integer da API
+  List<TextInputFormatter> get _numberFormatters => [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(9),
+      ];
 
   @override
   Widget build(BuildContext context) {
+    // #v valores exibidos na prévia (0 enquanto vazio)
+    final previewXp = _xp ?? 0;
+    final previewGold = _gold ?? 0;
+    final previewTitle = _titleController.text.trim().isEmpty
+        ? 'Título da missão'
+        : _titleController.text.trim();
+
     return Scaffold(
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
+            // ## cabeçalho: fechar, título, subtítulo e botão Salvar
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 IconButton(
                   onPressed: () => Navigator.of(context).maybePop(),
-                  icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                  icon: const Icon(Icons.close, color: AppColors.textPrimary),
                 ),
-                const SizedBox(width: 4),
-                const Text('Nova Missão', style: TextStyle(color: AppColors.textPrimary, fontSize: 19, fontWeight: FontWeight.w700)),
+                const Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Nova Missão',
+                            style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700)),
+                        Text('Defina um objetivo e a recompensa por cumpri-lo.',
+                            style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+                      ],
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _canSubmit ? _submit : null,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: AppColors.primaryGreen),
+                        )
+                      : const Text('Salvar',
+                          style: TextStyle(
+                              color: AppColors.primaryGreen, fontWeight: FontWeight.w700)),
+                ),
               ],
             ),
-            const SizedBox(height: 8),
-            Center(
-              child: GestureDetector(
-                onTap: () {},
-                child: Column(
+            const SizedBox(height: 12),
+
+            // ## título com contador
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const FormLabel('Título da missão'),
+                Text('${_titleController.text.length}/$_titleMax',
+                    style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+              ],
+            ),
+            TextField(
+              controller: _titleController,
+              maxLength: _titleMax,
+              // ## esconde o contador padrão (usamos o nosso acima)
+              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+              decoration: const InputDecoration(hintText: 'Ex: Completar tutorial'),
+            ),
+            const SizedBox(height: 18),
+
+            // ## recompensa: XP e ouro lado a lado
+            const FormLabel('Recompensa', tooltip: 'XP e ouro ganhos ao concluir a missão'),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('XP',
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+                      const SizedBox(height: 4),
+                      TextField(
+                        controller: _xpController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: _numberFormatters,
+                        decoration: const InputDecoration(
+                          hintText: 'Ex: 50',
+                          prefixIcon: Icon(Icons.bolt_rounded, color: AppColors.primaryGreen),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Ouro',
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+                      const SizedBox(height: 4),
+                      TextField(
+                        controller: _goldController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: _numberFormatters,
+                        decoration: const InputDecoration(
+                          hintText: 'Ex: 10',
+                          prefixIcon: Icon(Icons.monetization_on, color: AppColors.gold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
+
+            // ## prévia: mostra como a missão aparece na lista
+            const FormLabel('Prévia da missão'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
                   children: [
                     Container(
-                      width: 64,
-                      height: 64,
+                      width: 36,
+                      height: 36,
                       decoration: BoxDecoration(
+                        color: AppColors.danger.withValues(alpha: 0.18),
                         shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.primaryGreen, width: 1.4),
                       ),
-                      child: const Icon(Icons.add, color: AppColors.primaryGreen, size: 28),
+                      child: const Icon(Icons.track_changes_rounded,
+                          color: AppColors.danger, size: 18),
                     ),
-                    const SizedBox(height: 6),
-                    const Text('Adicionar ícone', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            previewTitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _titleController.text.trim().isEmpty
+                                  ? AppColors.textMuted
+                                  : AppColors.textPrimary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          // ## toda missão nova nasce ativa (finished = false)
+                          const Text('Missão · Ativa',
+                              style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('+$previewXp XP',
+                            style: const TextStyle(
+                                color: AppColors.primaryGreen,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12.5)),
+                        Row(children: [
+                          const Icon(Icons.monetization_on, color: AppColors.gold, size: 12),
+                          const SizedBox(width: 3),
+                          Text('$previewGold Ouro',
+                              style: const TextStyle(color: AppColors.gold, fontSize: 11.5)),
+                        ]),
+                      ],
+                    ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 20),
-            const FormLabel('Título da missão'),
-            TextField(controller: _titleController, decoration: const InputDecoration(hintText: 'Ex: Correr 5 km')),
-            const SizedBox(height: 16),
-            const FormLabel('Descrição'),
-            TextField(
-              controller: _descController,
-              maxLines: 3,
-              decoration: const InputDecoration(hintText: 'Descreva o objetivo da missão...'),
-            ),
-            const SizedBox(height: 16),
-            const FormLabel('Atributo principal'),
-            AttributeSelector(selected: _attribute, onSelected: (o) => setState(() => _attribute = o)),
-            const SizedBox(height: 16),
-            const FormLabel('Duração'),
-            Row(
-              children: [
-                Expanded(child: _DateBox(label: 'Data inicial', value: _fmt(_startDate), onTap: () => _pickDate(isStart: true))),
-                const SizedBox(width: 12),
-                Expanded(child: _DateBox(label: 'Data final (opcional)', value: _fmt(_endDate), onTap: () => _pickDate(isStart: false))),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const FormLabel('Tipo de missão'),
-            Row(
-              children: [
-                Expanded(
-                  child: SelectableBox(
-                    icon: Icons.person,
-                    title: 'Individual',
-                    subtitle: 'Apenas para você',
-                    selected: _kind == MissionKind.individual,
-                    onTap: () => setState(() => _kind = MissionKind.individual),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: SelectableBox(
-                    icon: Icons.group,
-                    title: 'Compartilhada',
-                    subtitle: 'Pode ser compartilhada',
-                    selected: _kind == MissionKind.compartilhada,
-                    onTap: () => setState(() => _kind = MissionKind.compartilhada),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const FormLabel('Recompensas'),
-            Row(
-              children: [
-                Expanded(
-                  child: MetricPill(
-                    icon: Icons.bolt,
-                    iconColor: AppColors.primaryGreen,
-                    label: 'XP',
-                    value: '$_xp',
-                    caption: 'Pontos de Experiência',
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: MetricPill(
-                    icon: Icons.monetization_on,
-                    iconColor: AppColors.gold,
-                    label: 'Gold',
-                    value: '$_gold',
-                    caption: 'Ouro',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            GestureDetector(
-              onTap: () {},
-              child: const Row(
-                children: [
-                  Icon(Icons.add_circle_outline, color: AppColors.primaryGreen, size: 18),
-                  SizedBox(width: 6),
-                  Text('Adicionar recompensa bônus', style: TextStyle(color: AppColors.primaryGreen, fontSize: 13, fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
             const SizedBox(height: 24),
+
+            // ## botão principal também embaixo (mais fácil de achar no celular)
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: (_titleController.text.trim().isEmpty || _saving) ? null : _submit,
+                onPressed: _canSubmit ? _submit : null,
                 child: _saving
                     ? const SizedBox(
                         width: 18,
@@ -211,38 +282,6 @@ class _NewMissionScreenState extends State<NewMissionScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black),
                       )
                     : const Text('Criar Missão'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DateBox extends StatelessWidget {
-  final String label;
-  final String value;
-  final VoidCallback onTap;
-  const _DateBox({required this.label, required this.value, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-        decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
-        child: Row(
-          children: [
-            const Icon(Icons.calendar_today_outlined, size: 15, color: AppColors.textSecondary),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                value.isEmpty ? label : value,
-                style: TextStyle(color: value.isEmpty ? AppColors.textMuted : AppColors.textPrimary, fontSize: 12.5),
-                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],

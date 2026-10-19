@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_service.dart';
 
@@ -16,12 +17,15 @@ class AuthService {
   User? get currentUser => _client.auth.currentUser;
 
   // #f signInWithGoogle — abre o fluxo OAuth do Google. Na Web, isso
-  // redireciona a própria aba pro Google e volta pro redirectTo informado
-  // (deixamos null para usar o Site URL configurado no painel do Supabase).
+  // redireciona a própria aba pro Google e volta pro mesmo endereço de onde
+  // o login começou (localhost no teste, web.app no site publicado).
+  // #!! o endereço precisa estar em Authentication > URL Configuration >
+  // Redirect URLs no painel do Supabase; se não estiver, o Supabase volta
+  // para o Site URL (foi isso que mandou o teste local para o web.app).
   Future<void> signInWithGoogle() async {
     await _client.auth.signInWithOAuth(
       OAuthProvider.google,
-      redirectTo: null,
+      redirectTo: kIsWeb ? Uri.base.origin : null,
     );
   }
 

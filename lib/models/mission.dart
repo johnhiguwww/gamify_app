@@ -21,11 +21,16 @@ class Mission {
   final String? description;
   final DateTime? startDate;
   final DateTime? endDate;
-    // #v a API não manda estes três: têm valor padrão
+
+  // #v createdAt e finishedAt vêm direto da API (MissionOutPutDTO)
+  final DateTime? createdAt;
+  final DateTime? finishedAt;
+
+  // #v a API não manda estes dois: têm valor padrão
   final MissionStatus status;
   final MissionKind kind;
 
-  // #f construtor: difficulty, status e kind agora são opcionais
+  // #f construtor: status e kind são opcionais
   const Mission({
     required this.id,
     required this.title,
@@ -41,7 +46,13 @@ class Mission {
     this.description,
     this.startDate,
     this.endDate,
+    this.createdAt,
+    this.finishedAt,
   });
+
+  // #f _parseDate — texto ISO da API vira DateTime; null se vier vazio ou inválido
+  static DateTime? _parseDate(dynamic value) =>
+      value is String ? DateTime.tryParse(value) : null;
 
   // #f fromJson: converte o MissionOutPutDTO da API em Mission
   // #p json: mapa vindo do jsonDecode
@@ -68,6 +79,9 @@ class Mission {
       goldReward: json['reward'] as int,
       // #t sem data final na API, não há como calcular os dias restantes
       daysLeft: 0,
+      // ## datas reais da API
+      createdAt: _parseDate(json['createdAt']),
+      finishedAt: _parseDate(json['finishedAt']),
       // #if concluída vira "concluida", senão "ativa"
       status: finished ? MissionStatus.concluida : MissionStatus.ativa,
     );

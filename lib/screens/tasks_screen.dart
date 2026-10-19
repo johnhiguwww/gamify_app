@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-//import '../data/mock_data.dart';
 import '../models/task.dart';
 import '../theme/app_colors.dart';
 import '../widgets/task_tile.dart';
@@ -7,8 +6,7 @@ import 'new_task_screen.dart';
 import '../services/auth_service.dart';
 import '../services/gamify_api_service.dart';
 
-// #!! Tela não fazia parte dos 6 prints recebidos — construída seguindo o
-// mesmo padrão visual das outras telas pra fechar a navegação (aba "Tarefas").
+// #$ TasksScreen — aba "Tarefas"
 class TasksScreen extends StatefulWidget {
   const TasksScreen({super.key});
 
@@ -17,9 +15,10 @@ class TasksScreen extends StatefulWidget {
 }
 
 class _TasksScreenState extends State<TasksScreen> {
-    List<GamifyTask> _tasks = [];
+  List<GamifyTask> _tasks = [];
   bool _loading = true;
   String? _error;
+  // #v id da tarefa sendo concluída (trava cliques repetidos)
   String? _completingId;
 
   @override
@@ -55,17 +54,19 @@ class _TasksScreenState extends State<TasksScreen> {
     }
   }
 
-  // #f _complete — única: POST /tasks/complete; recorrente: PUT /tasks/complete-cycle
+  // #f _complete — POST /tasks/complete (a única rota de concluir tarefa)
+  // #!! a API encerra a tarefa de vez; o perfil devolvido atualiza o cabeçalho
   Future<void> _complete(GamifyTask task) async {
+    // #if já concluída ou outra conclusão em andamento: não faz nada
     if (task.isDone || _completingId != null) return;
     setState(() => _completingId = task.id);
     try {
-      if (task.frequency == TaskFrequency.once) {
-        await GamifyApiService.instance.completeTask(task.id);
-      } else {
-        await GamifyApiService.instance.completeTaskCycle(task.id);
-      }
+      await GamifyApiService.instance.completeTask(task.id);
       await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Tarefa concluída! +${task.xpReward} XP e +${task.goldReward} de ouro')),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -83,43 +84,54 @@ class _TasksScreenState extends State<TasksScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.checklist_rounded, color: AppColors.textPrimary),
-              const SizedBox(width: 8),
-              const Text('Tarefas', style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w700)),
+              Icon(Icons.checklist_rounded, color: AppColors.textPrimary),
+              SizedBox(width: 8),
+              Text('Tarefas',
+                  style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w700)),
             ],
           ),
           const SizedBox(height: 4),
-          const Text('Suas ações do dia a dia rumo à evolução.', style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
+          const Text('Suas ações do dia a dia rumo à evolução.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
           const SizedBox(height: 16),
-            if (_loading)
-              const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
-            else if (_error != null)
-              Text(_error!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5))
-            else if (_tasks.isEmpty)
-              const Text('Nenhuma tarefa ainda.', style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5))
-            else
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                  child: Column(
-                    children: [
-                      for (var i = 0; i < _tasks.length; i++) ...[
-                        TaskTile(task: _tasks[i], onToggle: (_) => _complete(_tasks[i])),
-                        if (i != _tasks.length - 1) const Divider(height: 1),
-                      ],
+          if (_loading)
+            const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+          else if (_error != null)
+            Text(_error!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5))
+          else if (_tasks.isEmpty)
+            const Text('Nenhuma tarefa ainda.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5))
+          else
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < _tasks.length; i++) ...[
+                      TaskTile(task: _tasks[i], onToggle: (_) => _complete(_tasks[i])),
+                      if (i != _tasks.length - 1) const Divider(height: 1),
                     ],
-                  ),
+                  ],
                 ),
               ),
+            ),
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const NewTaskScreen()))
-                .then((_) => _load()),
+                  .push(MaterialPageRoute(builder: (_) => const NewTaskScreen()))
+                  .then((_) => _load()),
+              icon: const Icon(Icons.add, color: AppColors.primaryGreen),
+              label: const Text('Nova Tarefa',
+                  style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w700)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.primaryGreen),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
             ),
           ),
         ],

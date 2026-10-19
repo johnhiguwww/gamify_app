@@ -33,12 +33,6 @@ class SectionCard extends StatelessWidget {
                   child: Text(title,
                       style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 14)),
                 ),
-                if (onSeeAll != null)
-                  GestureDetector(
-                    onTap: onSeeAll,
-                    child: const Text('Ver todas',
-                        style: TextStyle(color: AppColors.primaryGreen, fontSize: 12, fontWeight: FontWeight.w600)),
-                  ),
               ],
             ),
             const SizedBox(height: 10),

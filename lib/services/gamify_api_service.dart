@@ -2,22 +2,21 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/user_profile.dart';
 import '../models/mission.dart';
-import '../models/task.dart'
+import '../models/task.dart';
+import 'auth_service.dart';
+import 'current_user.dart';
 
 // #$ GamifyApiService — encapsula as chamadas HTTP pra sua API Java
-// (Spring Boot). #!! troque baseUrl pela URL onde a API estiver hospedada
-// (ex: https://gamify-api.onrender.com). Enquanto estiver testando local,
-// use http://localhost:8080 — mas lembre que isso só funciona se o Flutter
-// também estiver rodando local (Chrome), nunca a partir do site publicado.
+// (Spring Boot). #!! troque baseUrl pela URL onde a API estiver hospedada.
+// Enquanto estiver testando local, use http://localhost:8080.
 class GamifyApiService {
   GamifyApiService._();
   static final GamifyApiService instance = GamifyApiService._();
 
-  //# CloudFire - API conectada com o Flutter
-  static const String baseUrl = 'http://localhost:8080/';
-//https://jelsoft-benefit-season-solomon.trycloudflare.com
-  // #f fetchProfile — busca o perfil pelo UUID do usuário (o mesmo id do
-  // Supabase Auth). Devolve null se o perfil ainda não existe (404).
+  // #!! sem "/" no final: as rotas abaixo já começam com "/"
+  static const String baseUrl = 'http://localhost:8080';
+
+  // #f fetchProfile — GET /profiles/by-user-uuid/{uuid}; null se 404
   Future<UserProfile?> fetchProfile(String userId) async {
     final uri = Uri.parse('$baseUrl/profiles/by-user-uuid/$userId');
     final response = await http.get(uri);
@@ -28,9 +27,19 @@ class GamifyApiService {
     return UserProfile.fromApi(jsonDecode(response.body));
   }
 
-  // #f createOrGetProfile — chamado logo após o primeiro login com Google.
-  // Se o perfil já existir na API, ela mesma devolve o existente (sem
-  // duplicar); senão, cria um novo com nível 1.
+  // #f _refreshCurrentProfile — recarrega o perfil e atualiza o CurrentUser
+  Future<void> _refreshCurrentProfile() async {
+    try {
+      final userId = AuthService.instance.currentUser?.id;
+      if (userId == null) return;
+      final profile = await fetchProfile(userId);
+      if (profile != null) CurrentUser.profile = profile;
+    } catch (_) {
+      // ## falhar ao atualizar o cabeçalho não pode atrapalhar a conclusão
+    }
+  }
+
+  // #f createOrGetProfile — POST /profiles/new (chamado após o login)
   Future<UserProfile> createOrGetProfile({
     required String userId,
     required String email,
@@ -54,21 +63,8 @@ class GamifyApiService {
     return UserProfile.fromApi(jsonDecode(response.body));
   }
 
-  // #f fetchTasks — lista as tarefas do perfil logado.
-  Future<List<dynamic>> fetchTasks(String userId) async {
-    final uri = Uri.parse('$baseUrl/profiles/$userId/my_tasks');
-    final response = await http.get(uri);
-    if (response.statusCode != 200) {
-      throw Exception('Erro ao buscar tarefas (${response.statusCode}): ${response.body}');
-    }
-    return jsonDecode(response.body) as List<dynamic>;
-  }
-
-  // #f createTask — cria uma tarefa nova pro perfil informado, chamado
-  // pela tela "Nova Tarefa". frequency deve ser um dos valores aceitos
-  // pelo backend: UNICA, DIARIO, SEMANAL, MENSAL.
-   // #f createTask — POST /tasks/newtask (TasksInputDTO)
-  // #r void; a API responde 201 com a tarefa criada
+  // #f createTask — POST /tasks/newtask (TasksInputDTO)
+  // frequency: UNIQUE, DAILY, WEEKLY ou MONTHLY; attributes: snake_case
   Future<void> createTask({
     required String profileUuid,
     required String title,
@@ -101,7 +97,6 @@ class GamifyApiService {
   }
 
   // #f fetchTasks — GET /profiles/{uuid}/my_tasks (lista de TasksDTO)
-  // #p userId: id do usuário (igual ao id do perfil no banco)
   Future<List<GamifyTask>> fetchTasks(String userId) async {
     final uri = Uri.parse('$baseUrl/profiles/$userId/my_tasks');
     final response = await http.get(uri);
@@ -112,8 +107,11 @@ class GamifyApiService {
     return [for (final e in list) GamifyTask.fromJson(e as Map<String, dynamic>)];
   }
 
-  // #f completeTask — POST /tasks/complete (tarefa única)
-  // #r mapa do ProfileDTO atualizado; a API responde 200, 404 ou 409
+  // #f completeTask — POST /tasks/complete (corpo {"taskId"})
+  // #!! a API marca a tarefa como finished para sempre (mesmo as recorrentes);
+  // uma segunda chamada na mesma tarefa dá erro de "já concluída".
+  // ## o ProfileDTO devolvido atualiza o CurrentUser (ouro, atributos)
+  // #r mapa do ProfileDTO atualizado
   Future<Map<String, dynamic>> completeTask(String taskId) async {
     final uri = Uri.parse('$baseUrl/tasks/complete');
     final response = await http.post(
@@ -124,21 +122,12 @@ class GamifyApiService {
     if (response.statusCode != 200) {
       throw Exception('Erro ao concluir tarefa (${response.statusCode}): ${response.body}');
     }
-    return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    CurrentUser.profile = UserProfile.fromApi(data);
+    return data;
   }
 
-  // #f completeTaskCycle — PUT /tasks/complete-cycle/{taskId} (tarefa recorrente)
-  // #r void; a API responde 200, 404 ou 409
-  Future<void> completeTaskCycle(String taskId) async {
-    final uri = Uri.parse('$baseUrl/tasks/complete-cycle/$taskId');
-    final response = await http.put(uri);
-    if (response.statusCode != 200) {
-      throw Exception('Erro ao concluir ciclo (${response.statusCode}): ${response.body}');
-    }
-  }
-
-  // #f createMission — cria uma missão nova pro usuário informado,
-  // chamado pela tela "Nova Missão".
+  // #f createMission — POST /missions/new
   Future<void> createMission({
     required String userId,
     required String title,
@@ -159,38 +148,29 @@ class GamifyApiService {
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Erro ao criar missão (${response.statusCode}): ${response.body}');
     }
+  }
 
-  // #f: fetchMissions — lista as missões do perfil (GET /profiles/{uuid}/my_missions).
-  // #p: userId: UUID do usuário (o mesmo id do Supabase Auth)
-  // #r: lista de Mission; lança Exception se a API não responder 200
+  // #f fetchMissions — GET /profiles/{uuid}/my_missions
   Future<List<Mission>> fetchMissions(String userId) async {
-    // ## monta a URL com o prefixo /profiles
     final uri = Uri.parse('$baseUrl/profiles/$userId/my_missions');
     final response = await http.get(uri);
-
-    // #if: a API não devolveu 200: avisa com o código e o corpo
+    // #if a API não devolveu 200: avisa com o código e o corpo
     if (response.statusCode != 200) {
       throw Exception('Erro ao buscar missões (${response.statusCode}): ${response.body}');
     }
-
-    // ##: utf8.decode(bodyBytes): sem isso os acentos podem quebrar
+    // ## utf8.decode(bodyBytes): sem isso os acentos podem quebrar
     final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
-
-    // ##: cada item do JSON vira uma Mission (usa o fromJson da Parte 1)
-    return data
-        .map((item) => Mission.fromJson(item as Map<String, dynamic>))
-        .toList();
+    return data.map((item) => Mission.fromJson(item as Map<String, dynamic>)).toList();
   }
 
-  // #f completeMission — PUT /missions/complete?missionId=...
-  // #r void; a API responde 200 (concluída), 404 (não encontrada) ou 409 (já concluída)
+  // #f completeMission — PUT /missions/complete/{missionId}
+  // ## depois de concluir, recarrega o perfil (XP e ouro do cabeçalho)
   Future<void> completeMission(String missionId) async {
-    final uri = Uri.parse('$baseUrl/missions/complete')
-        .replace(queryParameters: {'missionId': missionId});
+    final uri = Uri.parse('$baseUrl/missions/complete/$missionId');
     final response = await http.put(uri);
     if (response.statusCode != 200) {
       throw Exception('Erro ao concluir missão (${response.statusCode}): ${response.body}');
     }
-  }
+    await _refreshCurrentProfile();
   }
 }
