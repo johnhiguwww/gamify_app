@@ -40,7 +40,46 @@ class GamifyApiService {
     }
   }
 
+  // #f updateProfile — PUT /profiles/update/{uuid}, corpo {name, avatarUrl}
+  // #!! a API SEMPRE grava os dois campos juntos e valida: name não pode ser
+  // vazio e avatarUrl não pode ser vazio e precisa ser uma URL válida (400).
+  // Para mudar só um dos dois, reenvie o valor atual do outro.
+  // ## a API responde 200 com corpo vazio; por isso recarregamos o perfil
+  // depois, e o CurrentUser avisa as telas (dashboard e perfil)
+  // #p userId: id do usuário (igual ao id do perfil)
+  // #p name: nome novo (ou o atual)
+  // #p avatarUrl: link da foto nova (ou o atual)
+  Future<void> updateProfile({
+    required String userId,
+    required String name,
+    required String avatarUrl,
+  }) async {
+    final uri = Uri.parse('$baseUrl/profiles/update/$userId');
+    final response = await http.put(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'name': name, 'avatarUrl': avatarUrl}),
+    );
+    // #if 404: o perfil não existe na API
+    if (response.statusCode == 404) {
+      throw Exception('Perfil não encontrado na API.');
+    }
+    // #if outro status: mostra código e corpo (utf8 para manter os acentos)
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Erro ao atualizar perfil (${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
+    }
+    // ## recarrega o perfil para a tela mostrar o novo nome e a nova foto
+    final profile = await fetchProfile(userId);
+    if (profile == null) {
+      throw Exception('Perfil salvo, mas não foi possível recarregar.');
+    }
+    CurrentUser.profile = profile;
+  }
+
   // #f createOrGetProfile — POST /profiles/new (chamado após o login)
+  // #!! essa rota NÃO existe no ProfileController do Java (conferido);
+  // hoje essa chamada deve falhar e o AuthGate cai no perfil temporário
   Future<UserProfile> createOrGetProfile({
     required String userId,
     required String email,

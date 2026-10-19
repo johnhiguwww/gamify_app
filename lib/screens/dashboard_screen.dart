@@ -12,6 +12,7 @@ import '../widgets/gamify_progress_bar.dart';
 import '../widgets/mission_card.dart';
 import '../widgets/section_card.dart';
 import '../widgets/task_tile.dart';
+import '../widgets/user_avatar.dart';
 import 'new_mission_screen.dart';
 import 'new_task_screen.dart';
 
@@ -259,6 +260,7 @@ class _EmptyHint extends StatelessWidget {
   }
 }
 
+// #$ _Header — foto, nome, rank, nível e ouro
 class _Header extends StatelessWidget {
   final UserProfile user;
   const _Header({required this.user});
@@ -267,12 +269,8 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        CircleAvatar(
-          radius: 28,
-          backgroundColor: AppColors.surfaceAlt,
-          child: Text(user.name.substring(0, 1),
-              style: const TextStyle(fontSize: 22, color: AppColors.primaryGreen)),
-        ),
+        // ## foto do perfil (ou a inicial do nome quando não há foto)
+        UserAvatar(name: user.name, avatarUrl: user.avatarUrl, radius: 28),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
