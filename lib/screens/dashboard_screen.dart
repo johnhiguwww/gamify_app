@@ -10,6 +10,7 @@ import '../theme/app_colors.dart';
 import '../widgets/attribute_row.dart';
 import '../widgets/gamify_progress_bar.dart';
 import '../widgets/mission_card.dart';
+import '../widgets/rank_badge.dart';
 import '../widgets/section_card.dart';
 import '../widgets/task_tile.dart';
 import '../widgets/user_avatar.dart';
@@ -77,7 +78,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final userId = AuthService.instance.currentUser?.id;
       if (userId == null) throw Exception('Sessão expirada, faça login novamente.');
       final all = await GamifyApiService.instance.fetchTasks(userId);
-      // ## pendente = finished "PENDING" e completedInCurrentCycle false
+      // ## pendente = não encerrada (finished) e fora do período de espera
+      // (recorrente concluída volta sozinha depois de 24 h / 7 dias / 30 dias)
       final pending = all.where((t) => !t.isDone).take(4).toList();
       if (mounted) setState(() => _tasks = pending);
     } catch (e) {
@@ -87,18 +89,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // #f _completeTask — POST /tasks/complete e recarrega a lista
-  // #!! a API encerra a tarefa de vez; o cabeçalho atualiza pelo CurrentUser
+  // #f _completeTask — conclui pela rota certa da frequência e recarrega a lista
+  // ## Única: POST /tasks/complete (encerra). Recorrente: PUT /tasks/complete-cycle
+  // (some do dashboard e volta sozinha quando o período acabar — regra do app)
+  // ## o cabeçalho (ouro) atualiza pelo CurrentUser
   Future<void> _completeTask(GamifyTask task) async {
-    // #if já tem uma conclusão em andamento: não faz nada
-    if (_completingTaskId != null) return;
+    // #if já tem uma conclusão em andamento, ou a tarefa já está concluída
+    // (o dashboard só lista pendentes, mas a lista pode estar desatualizada)
+    if (_completingTaskId != null || task.isDone) return;
     setState(() => _completingTaskId = task.id);
     try {
-      await GamifyApiService.instance.completeTask(task.id);
+      await GamifyApiService.instance.concludeTask(task);
       await _loadTasks();
       if (!mounted) return;
+      // #v aviso extra para recorrente: quando ela volta
+      final back = task.isRecurring ? ' Volta em ${_cycleText(task.frequency)}.' : '';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Tarefa concluída! +${task.xpReward} XP e +${task.goldReward} de ouro')),
+        SnackBar(
+            content: Text(
+                'Tarefa concluída! +${task.xpReward} XP no atributo e +${task.goldReward} de ouro.$back')),
       );
     } catch (e) {
       if (mounted) {
@@ -109,6 +118,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } finally {
       if (mounted) setState(() => _completingTaskId = null);
     }
+  }
+
+  // #f _cycleText — texto do período de renovação de cada frequência
+  // #p f: frequência da tarefa
+  // #r ex.: "24 h", "7 dias", "30 dias"
+  String _cycleText(TaskFrequency f) => switch (f) {
+        TaskFrequency.daily => '24 h',
+        TaskFrequency.weekly => '7 dias',
+        TaskFrequency.monthly => '30 dias',
+        TaskFrequency.once => '',
+      };
+
+  // #f _editTask — abre a tarefa no formulário de edição e recarrega ao voltar
+  // #p task: tarefa tocada no dashboard (sempre pendente aqui)
+  Future<void> _editTask(GamifyTask task) async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => NewTaskScreen(task: task)));
+    if (mounted) _loadTasks();
   }
 
   // #f _openNewMission — abre a Nova Missão e recarrega a lista ao voltar
@@ -146,7 +173,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_tasks.isEmpty) return const _EmptyHint(text: 'Nenhuma tarefa');
     return Column(
       children: [
-        for (final t in _tasks) TaskTile(task: t, onToggle: (_) => _completeTask(t)),
+        // ## toque no corpo = editar; toque no círculo = concluir
+        for (final t in _tasks)
+          TaskTile(task: t, onToggle: (_) => _completeTask(t), onTap: () => _editTask(t)),
       ],
     );
   }
@@ -279,12 +308,9 @@ class _Header extends StatelessWidget {
               Text(user.name,
                   style: const TextStyle(
                       color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w700)),
-              Row(children: [
-                const Icon(Icons.eco, color: AppColors.primaryGreen, size: 13),
-                const SizedBox(width: 4),
-                Text(user.rank,
-                    style: const TextStyle(color: AppColors.primaryGreen, fontSize: 12)),
-              ]),
+              const SizedBox(height: 3),
+              // ## selo da patente: cor e ícone da patente + próxima patente
+              RankBadge(rank: user.rank, level: user.globalLevel, xpToNext: user.xpToNextLevel),
             ],
           ),
         ),

@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../models/attribute.dart';
+import '../models/task.dart';
 import '../services/auth_service.dart';
 import '../services/gamify_api_service.dart';
 import '../theme/app_colors.dart';
+import '../widgets/attribute_selector.dart';
 import '../widgets/form_bits.dart';
 
-// #$ NewMissionScreen — só envia o que o POST /missions/new aceita:
-// userId, title, experience e reward (todos obrigatórios; os números >= 0).
-// ## visual alinhado com a NewTaskScreen (cabeçalho, contador, prévia),
-// mas SEM campos que a API de missão não aceita.
+// #$ NewMissionScreen — cria a missão e, se o formulário de tarefa estiver
+// ligado, uma tarefa vinculada.
+// #!! fluxo (instrução do desenvolvedor da API):
+//   1) POST /tasks/newtask com partOfMission = true
+//   2) pega o id devolvido no TasksOutPutDTO
+//   3) POST /missions/new com esse id em taskId
+// ## a missão guarda UMA tarefa só (opcional).
 class NewMissionScreen extends StatefulWidget {
   const NewMissionScreen({super.key});
 
@@ -17,30 +23,80 @@ class NewMissionScreen extends StatefulWidget {
 }
 
 class _NewMissionScreenState extends State<NewMissionScreen> {
-  // #v controladores dos três campos
+  // #v campos da missão
   final _titleController = TextEditingController();
   final _xpController = TextEditingController();
   final _goldController = TextEditingController();
 
-  // #v true enquanto o POST está em andamento
+  // #v campos da tarefa vinculada
+  final _taskTitleController = TextEditingController();
+  final _taskDescController = TextEditingController();
+  final _taskXpController = TextEditingController();
+  final _taskGoldController = TextEditingController();
+
+  // #v true quando o usuário quer vincular uma tarefa à missão
+  bool _linkTask = false;
+  AttributeOption _attribute = attributeOptions[1]; // #v default: Inteligência
+  TaskFrequency _frequency = TaskFrequency.once;
+  // #v dia da semana (só vale quando a frequência é semanal); a API guarda UM dia
+  String _day = 'MONDAY';
+
+  // #v true enquanto os POSTs estão em andamento
   bool _saving = false;
+
+  // #v id da tarefa JÁ criada na API; se a missão falhar, o "tentar de novo"
+  // reaproveita esse id em vez de criar outra tarefa (não há rota para apagar)
+  String? _createdTaskId;
 
   // #!! limite só visual (contador); a API não foi conferida quanto ao tamanho do título
   static const int _titleMax = 60;
 
-  // #f _xp / _gold — valor digitado como int (null se vazio ou inválido)
+  // #v dias aceitos pelo TaskFrequencyDaysOfWeekEnum (confirmado no Java)
+  static const _days = [
+    (key: 'MONDAY', label: 'Seg'),
+    (key: 'TUESDAY', label: 'Ter'),
+    (key: 'WEDNESDAY', label: 'Qua'),
+    (key: 'THURSDAY', label: 'Qui'),
+    (key: 'FRIDAY', label: 'Sex'),
+    (key: 'SATURDAY', label: 'Sáb'),
+    (key: 'SUNDAY', label: 'Dom'),
+  ];
+
+  // #f valores digitados como int (null se vazio ou inválido)
   int? get _xp => int.tryParse(_xpController.text.trim());
   int? get _gold => int.tryParse(_goldController.text.trim());
+  int get _taskXp => int.tryParse(_taskXpController.text.trim()) ?? 0;
+  int get _taskGold => int.tryParse(_taskGoldController.text.trim()) ?? 0;
 
-  // #f _canSubmit — título preenchido, XP e ouro informados e sem envio em andamento
+  // #f _taskValid — tarefa pronta: título, XP >= 1, ouro >= 1 e atributo da API
+  // ## a API de tarefa exige reward e experience com mínimo 1
+  bool get _taskValid =>
+      _taskTitleController.text.trim().isNotEmpty &&
+      _taskXp >= 1 &&
+      _taskGold >= 1 &&
+      _attribute.type != null;
+
+  // #f _canSubmit — missão válida, tarefa válida (se ligada) e sem envio em andamento
   bool get _canSubmit =>
-      _titleController.text.trim().isNotEmpty && _xp != null && _gold != null && !_saving;
+      _titleController.text.trim().isNotEmpty &&
+      _xp != null &&
+      _gold != null &&
+      (!_linkTask || _taskValid) &&
+      !_saving;
 
   @override
   void initState() {
     super.initState();
     // #!! reconstrói ao digitar para habilitar/desabilitar o botão e atualizar a prévia
-    for (final c in [_titleController, _xpController, _goldController]) {
+    for (final c in [
+      _titleController,
+      _xpController,
+      _goldController,
+      _taskTitleController,
+      _taskDescController,
+      _taskXpController,
+      _taskGoldController,
+    ]) {
       c.addListener(() => setState(() {}));
     }
   }
@@ -50,10 +106,35 @@ class _NewMissionScreenState extends State<NewMissionScreen> {
     _titleController.dispose();
     _xpController.dispose();
     _goldController.dispose();
+    _taskTitleController.dispose();
+    _taskDescController.dispose();
+    _taskXpController.dispose();
+    _taskGoldController.dispose();
     super.dispose();
   }
 
-  // #f _submit — POST /missions/new
+  // #f _frequencyToApi — enum local -> TaskFrequencyEnum do Java
+  String _frequencyToApi(TaskFrequency f) => switch (f) {
+        TaskFrequency.daily => 'DAILY',
+        TaskFrequency.weekly => 'WEEKLY',
+        TaskFrequency.monthly => 'MONTHLY',
+        TaskFrequency.once => 'UNIQUE',
+      };
+
+  // #f _attributeToApi — AttributeType -> AttributesLebels do Java (snake_case)
+  String _attributeToApi(AttributeType t) => switch (t) {
+        AttributeType.inteligencia => 'intelligence',
+        AttributeType.forca => 'strength',
+        AttributeType.espiritualidade => 'spirituality',
+        AttributeType.carisma => 'charisma',
+        AttributeType.percepcaoEspacial => 'spatial_perception',
+        AttributeType.autoconsciencia => 'self_awareness',
+        AttributeType.linguagem => 'language',
+        AttributeType.raciocinioLogico => 'logical_reasoning',
+        AttributeType.musicalidade => 'musicality',
+      };
+
+  // #f _submit — cria a tarefa (se ligada) e depois a missão
   Future<void> _submit() async {
     // #if não pode enviar: sai sem fazer nada
     if (!_canSubmit) return;
@@ -61,17 +142,44 @@ class _NewMissionScreenState extends State<NewMissionScreen> {
     try {
       final userId = AuthService.instance.currentUser?.id;
       if (userId == null) throw Exception('Sessão expirada, faça login novamente.');
+
+      // ## passo 1 e 2: cria a tarefa vinculada e guarda o id devolvido
+      // #if a tarefa está ligada e ainda NÃO foi criada nesta tela
+      if (_linkTask && _createdTaskId == null) {
+        final taskTitle = _taskTitleController.text.trim();
+        final taskDesc = _taskDescController.text.trim();
+        _createdTaskId = await GamifyApiService.instance.createTask(
+          profileUuid: userId,
+          title: taskTitle,
+          // #!! descrição é obrigatória na API; usa o título quando vazia
+          description: taskDesc.isEmpty ? taskTitle : taskDesc,
+          reward: _taskGold,
+          experience: _taskXp,
+          attributes: _attributeToApi(_attribute.type!),
+          frequency: _frequencyToApi(_frequency),
+          daysOfWeek: _frequency == TaskFrequency.weekly ? [_day] : null,
+          // #!!! a flag que diz que a tarefa faz parte de uma missão
+          partOfMission: true,
+        );
+      }
+
+      // ## passo 3: cria a missão com o id da tarefa (ou sem taskId)
       await GamifyApiService.instance.createMission(
         userId: userId,
         title: _titleController.text.trim(),
         reward: _gold!,
         experience: _xp!,
+        taskId: _linkTask ? _createdTaskId : null,
       );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
+        // #if a tarefa já existe na API mas a missão falhou: avisa o usuário
+        final extra = _createdTaskId != null
+            ? '\nA tarefa já foi criada; ao tentar de novo ela será reaproveitada.'
+            : '';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Não foi possível criar a missão: $e')),
+          SnackBar(content: Text('Não foi possível criar a missão: $e$extra')),
         );
       }
     } finally {
@@ -84,6 +192,138 @@ class _NewMissionScreenState extends State<NewMissionScreen> {
         FilteringTextInputFormatter.digitsOnly,
         LengthLimitingTextInputFormatter(9),
       ];
+
+  // #f _taskForm — formulário da tarefa vinculada (só aparece quando ligada)
+  List<Widget> _taskForm() {
+    return [
+      const SizedBox(height: 14),
+      // ## título da tarefa com contador
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const FormLabel('Título da tarefa'),
+          Text('${_taskTitleController.text.length}/60',
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+        ],
+      ),
+      TextField(
+        controller: _taskTitleController,
+        maxLength: 60,
+        buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+        decoration: const InputDecoration(hintText: 'Ex: Assistir à primeira aula'),
+      ),
+      const SizedBox(height: 14),
+      const FormLabel('Atributo principal'),
+      AttributeSelector(selected: _attribute, onSelected: (o) => setState(() => _attribute = o)),
+      const SizedBox(height: 14),
+      const FormLabel('Recompensa da tarefa',
+          tooltip: 'XP vai para o atributo; ouro vai para o perfil (mínimo 1 em cada)'),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _taskXpController,
+              keyboardType: TextInputType.number,
+              inputFormatters: _numberFormatters,
+              decoration: const InputDecoration(
+                hintText: 'XP (mín. 1)',
+                prefixIcon: Icon(Icons.bolt_rounded, color: AppColors.primaryGreen),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: _taskGoldController,
+              keyboardType: TextInputType.number,
+              inputFormatters: _numberFormatters,
+              decoration: const InputDecoration(
+                hintText: 'Ouro (mín. 1)',
+                prefixIcon: Icon(Icons.monetization_on, color: AppColors.gold),
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 14),
+      const FormLabel('Frequência', tooltip: 'Rótulo da tarefa (a API não reinicia tarefas sozinha)'),
+      // ## chips de frequência
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final f in TaskFrequency.values)
+            GestureDetector(
+              onTap: () => setState(() => _frequency = f),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: _frequency == f ? AppColors.primaryGreen : AppColors.border,
+                      width: _frequency == f ? 1.6 : 1),
+                ),
+                child: Text(f.label,
+                    style: TextStyle(
+                      color: _frequency == f ? AppColors.primaryGreen : AppColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    )),
+              ),
+            ),
+        ],
+      ),
+      // ## seletor de dia: só aparece quando a frequência é semanal
+      if (_frequency == TaskFrequency.weekly) ...[
+        const SizedBox(height: 14),
+        const FormLabel('Dia da semana', tooltip: 'A API guarda um único dia'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final d in _days)
+              GestureDetector(
+                onTap: () => setState(() => _day = d.key),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: _day == d.key ? AppColors.primaryGreen : AppColors.border,
+                        width: _day == d.key ? 1.6 : 1),
+                  ),
+                  child: Text(d.label,
+                      style: TextStyle(
+                        color: _day == d.key ? AppColors.primaryGreen : AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      )),
+                ),
+              ),
+          ],
+        ),
+      ],
+      const SizedBox(height: 14),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const FormLabel('Descrição (opcional)', tooltip: 'Se ficar vazia, usamos o título'),
+          Text('${_taskDescController.text.length}/200',
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+        ],
+      ),
+      TextField(
+        controller: _taskDescController,
+        maxLength: 200,
+        maxLines: 3,
+        buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+        decoration: const InputDecoration(hintText: 'Adicione mais detalhes...'),
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -205,6 +445,30 @@ class _NewMissionScreenState extends State<NewMissionScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 18),
+
+            // ## interruptor: liga o formulário da tarefa vinculada
+            Card(
+              child: SwitchListTile(
+                value: _linkTask,
+                // #if a tarefa já foi criada na API: não deixa desligar (ela já existe)
+                onChanged: (_saving || _createdTaskId != null)
+                    ? null
+                    : (v) => setState(() => _linkTask = v),
+                activeThumbColor: AppColors.primaryGreen,
+                title: const Text('Vincular uma tarefa a esta missão',
+                    style: TextStyle(
+                        color: AppColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 13.5)),
+                subtitle: Text(
+                  _createdTaskId != null
+                      ? 'Tarefa já criada: ela será usada ao salvar a missão.'
+                      : 'A missão guarda uma tarefa só. Opcional.',
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5),
+                ),
+              ),
+            ),
+            // ## formulário da tarefa (só quando ligado)
+            if (_linkTask) ..._taskForm(),
             const SizedBox(height: 22),
 
             // ## prévia: mostra como a missão aparece na lista
@@ -243,8 +507,9 @@ class _NewMissionScreenState extends State<NewMissionScreen> {
                           ),
                           const SizedBox(height: 3),
                           // ## toda missão nova nasce ativa (finished = false)
-                          const Text('Missão · Ativa',
-                              style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+                          Text(_linkTask ? 'Missão · Ativa · com tarefa' : 'Missão · Ativa',
+                              style: const TextStyle(
+                                  color: AppColors.textSecondary, fontSize: 11.5)),
                         ],
                       ),
                     ),

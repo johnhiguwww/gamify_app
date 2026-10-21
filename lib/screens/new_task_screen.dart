@@ -5,12 +5,22 @@ import '../models/task.dart';
 import '../services/auth_service.dart';
 import '../services/gamify_api_service.dart';
 import '../theme/app_colors.dart';
+import '../data/task_icons.dart';
+import '../services/task_icon_storage.dart';
 import '../widgets/attribute_selector.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/task_icon_picker.dart';
+import '../widgets/task_tile.dart';
 
-// #$ NewTaskScreen — POST /tasks/newtask (TasksInputDTO)
+// #$ NewTaskScreen — cria (POST /tasks/newtask) ou edita (PUT /tasks/update)
+// uma tarefa; é o mesmo formulário (TaskInputDTO). No modo edição também
+// permite EXCLUIR (DELETE /tasks/delete).
+// ## o ícone escolhido e o atributo ficam salvos só no navegador
+// (TaskIconStorage), porque a API não guarda ícone nem devolve o atributo.
+// #p task: se informado, a tela entra em MODO EDIÇÃO com os campos preenchidos
 class NewTaskScreen extends StatefulWidget {
-  const NewTaskScreen({super.key});
+  final GamifyTask? task;
+  const NewTaskScreen({super.key, this.task});
 
   @override
   State<NewTaskScreen> createState() => _NewTaskScreenState();
@@ -28,6 +38,17 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
   // #v dia da semana (só vale quando a frequência é semanal); a API guarda UM dia
   String _day = 'MONDAY';
   bool _saving = false;
+  // #v true enquanto a exclusão está em andamento (trava os botões)
+  bool _deleting = false;
+  // #v chave do ícone escolhido (TaskIconOption.key); começa no padrão
+  String _iconKey = taskIconOptions.first.key;
+  // #v true quando o usuário já escolheu o atributo nesta tela de EDIÇÃO
+  // #!! a API não devolve o atributo da tarefa, então na edição ele precisa
+  // ser escolhido de novo antes de salvar
+  bool _attributeChosen = false;
+
+  // #v true quando estamos editando uma tarefa existente
+  bool get _isEdit => widget.task != null;
 
   // #v dias aceitos pelo TaskFrequencyDaysOfWeekEnum (confirmado no Java)
   static const _days = [
@@ -44,9 +65,16 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
   int get _xp => int.tryParse(_xpController.text) ?? 0;
   int get _gold => int.tryParse(_goldController.text) ?? 0;
 
-  // #v "Outro" (type == null) não tem atributo na API, então não salva
+  // #v na edição de tarefa antiga (atributo desconhecido) exige escolher o
+  // atributo antes de salvar
   bool get _canSave =>
-      _titleController.text.trim().isNotEmpty && _xp >= 1 && _gold >= 1 && _attribute.type != null && !_saving;
+      _titleController.text.trim().isNotEmpty &&
+      _xp >= 1 &&
+      _gold >= 1 &&
+      _attribute.type != null &&
+      (!_isEdit || _attributeChosen) &&
+      !_saving &&
+      !_deleting;
 
   // #f _frequencyToApi — enum local -> TaskFrequencyEnum do Java
   String _frequencyToApi(TaskFrequency f) => switch (f) {
@@ -69,7 +97,7 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
         AttributeType.musicalidade => 'musicality',
       };
 
-  // #f _submit — envia a tarefa para a API
+  // #f _submit — envia a tarefa para a API (cria ou edita, conforme o modo)
   Future<void> _submit() async {
     // #if não pode salvar: sai sem fazer nada
     if (!_canSave) return;
@@ -77,20 +105,52 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
     try {
       final userId = AuthService.instance.currentUser?.id;
       if (userId == null) throw Exception('Sessão expirada, faça login novamente.');
-      await GamifyApiService.instance.createTask(
-        profileUuid: userId,
-        title: _titleController.text.trim(),
-        // #!! descrição é opcional na tela, mas obrigatória na API; usamos
-        // o título como descrição padrão quando o campo fica em branco.
-        description: _descController.text.trim().isEmpty ? _titleController.text.trim() : _descController.text.trim(),
-        reward: _gold,
-        experience: _xp,
-        attributes: _attributeToApi(_attribute.type!),
-        frequency: _frequencyToApi(_frequency),
-        // ## a API guarda UM dia, com o nome por extenso (MONDAY..SUNDAY)
-        daysOfWeek: _frequency == TaskFrequency.weekly ? [_day] : null,
-      );
-      if (mounted) Navigator.of(context).pop();
+      final title = _titleController.text.trim();
+      // #!! descrição é opcional na tela, mas obrigatória na API; usamos
+      // o título como descrição padrão quando o campo fica em branco.
+      final description = _descController.text.trim().isEmpty ? title : _descController.text.trim();
+      // ## a API guarda UM dia, com o nome por extenso (MONDAY..SUNDAY)
+      final days = _frequency == TaskFrequency.weekly ? [_day] : null;
+
+      // #if modo edição: PUT /tasks/update?taskId=...
+      // #v id da tarefa salva (usado para guardar o ícone no navegador)
+      final String taskId;
+      if (_isEdit) {
+        taskId = widget.task!.id;
+        await GamifyApiService.instance.updateTask(
+          taskId: widget.task!.id,
+          profileUuid: userId,
+          title: title,
+          description: description,
+          reward: _gold,
+          experience: _xp,
+          attributes: _attributeToApi(_attribute.type!),
+          frequency: _frequencyToApi(_frequency),
+          daysOfWeek: days,
+          // ## mantém a flag que a tarefa já tinha
+          partOfMission: widget.task!.partOfMission,
+        );
+      } else {
+        // #else modo criação: POST /tasks/newtask (devolve o id criado)
+        taskId = await GamifyApiService.instance.createTask(
+          profileUuid: userId,
+          title: title,
+          description: description,
+          reward: _gold,
+          experience: _xp,
+          attributes: _attributeToApi(_attribute.type!),
+          frequency: _frequencyToApi(_frequency),
+          daysOfWeek: days,
+        );
+      }
+      // ## guarda o ícone e o atributo escolhidos (só no navegador)
+      await TaskIconStorage.save(taskId, _iconKey, _attribute.type);
+      if (mounted) {
+        // ## o messenger fica no app inteiro: o aviso aparece depois de fechar a tela
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.of(context).pop();
+        if (_isEdit) messenger.showSnackBar(const SnackBar(content: Text('Tarefa atualizada')));
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -102,9 +162,65 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
     }
   }
 
+  // #f _delete — pergunta e exclui a tarefa (DELETE /tasks/delete?taskId=)
+  // ## só existe no modo edição; ao terminar, fecha a tela e avisa
+  Future<void> _delete() async {
+    // #v tarefa sendo editada
+    final task = widget.task;
+    // #if não é edição, ou já está salvando/excluindo: não faz nada
+    if (task == null || _saving || _deleting) return;
+    // #if o usuário não confirmou: não faz nada
+    if (!await confirmTaskDelete(context, task)) return;
+    setState(() => _deleting = true);
+    try {
+      await GamifyApiService.instance.deleteTask(task.id);
+      if (mounted) {
+        // ## o messenger fica no app inteiro: o aviso aparece depois de fechar
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.of(context).pop();
+        messenger.showSnackBar(SnackBar(content: Text('Tarefa "${task.title}" excluída.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível excluir: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    // #if modo edição: preenche os campos com a tarefa escolhida
+    final t = widget.task;
+    if (t != null) {
+      _titleController.text = t.title;
+      // ## quando a descrição é igual ao título, foi o padrão do app: deixa vazio
+      final d = t.description ?? '';
+      _descController.text = d == t.title ? '' : d;
+      _xpController.text = '${t.xpReward}';
+      _goldController.text = '${t.goldReward}';
+      _frequency = t.frequency;
+      // #if a API mandou um dia válido: usa; senão fica em segunda
+      if (t.daysOfWeek.isNotEmpty && _days.any((d) => d.key == t.daysOfWeek.first)) {
+        _day = t.daysOfWeek.first;
+      }
+      // ## ícone: o que estava salvo no navegador (ou o padrão)
+      _iconKey = taskIconByKey(t.iconKey).key;
+      // #if o navegador lembra o atributo desta tarefa: já vem escolhido
+      if (t.attribute != null) {
+        _attribute = attributeOptions.firstWhere((o) => o.type == t.attribute,
+            orElse: () => attributeOptions[1]);
+        _attributeChosen = true;
+      } else {
+        // #else atributo desconhecido (tarefa antiga): nenhum fica marcado até
+        // o usuário escolher (_attributeChosen continua false)
+        _attribute = attributeOptions[1];
+      }
+    }
     for (final c in [_titleController, _descController, _xpController, _goldController]) {
       c.addListener(() => setState(() {}));
     }
@@ -136,16 +252,20 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                   onPressed: () => Navigator.of(context).maybePop(),
                   icon: const Icon(Icons.close, color: AppColors.textPrimary),
                 ),
-                const Expanded(
+                Expanded(
                   child: Padding(
-                    padding: EdgeInsets.only(top: 12),
+                    padding: const EdgeInsets.only(top: 12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Nova Tarefa',
-                            style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w700)),
-                        Text('Crie uma ação que te aproxima da sua evolução.',
-                            style: TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+                        Text(_isEdit ? 'Editar Tarefa' : 'Nova Tarefa',
+                            style: const TextStyle(
+                                color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w700)),
+                        Text(
+                            _isEdit
+                                ? 'Altere os dados da tarefa pendente.'
+                                : 'Crie uma ação que te aproxima da sua evolução.',
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
                       ],
                     ),
                   ),
@@ -179,13 +299,23 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
               decoration: const InputDecoration(hintText: 'Ex: Ler 10 páginas'),
             ),
             const SizedBox(height: 16),
+            const FormLabel('Ícone da tarefa', tooltip: 'Fica salvo só neste navegador'),
+            TaskIconPicker(selectedKey: _iconKey, onChanged: (k) => setState(() => _iconKey = k)),
+            const SizedBox(height: 16),
             const FormLabel('Atributo principal'),
-            AttributeSelector(selected: _attribute, onSelected: (o) => setState(() => _attribute = o)),
-            // #if "Outro" não existe na API: explica por que o Salvar fica desabilitado
-            if (_attribute.type == null)
+            AttributeSelector(
+              // ## edição sem atributo conhecido: nenhum aparece marcado
+              selected: (_isEdit && !_attributeChosen) ? null : _attribute,
+              onSelected: (o) => setState(() {
+                _attribute = o;
+                _attributeChosen = true;
+              }),
+            ),
+            // #if edição e ainda sem atributo escolhido: explica por quê
+            if (_isEdit && !_attributeChosen)
               const Padding(
                 padding: EdgeInsets.only(top: 6),
-                child: Text('A API exige um dos atributos da lista. Escolha outro para salvar.',
+                child: Text('A API não devolve o atributo da tarefa: escolha o atributo de novo para salvar.',
                     style: TextStyle(color: AppColors.danger, fontSize: 11.5)),
               ),
             const SizedBox(height: 16),
@@ -286,9 +416,10 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                     Container(
                       width: 36,
                       height: 36,
+                      // ## a prévia usa o ícone escolhido (o mesmo da lista)
                       decoration: BoxDecoration(
-                          color: _attribute.color.withValues(alpha: 0.18), shape: BoxShape.circle),
-                      child: Icon(_attribute.icon, color: _attribute.color, size: 18),
+                          color: taskIconByKey(_iconKey).color.withValues(alpha: 0.18), shape: BoxShape.circle),
+                      child: Icon(taskIconByKey(_iconKey).icon, color: taskIconByKey(_iconKey).color, size: 18),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -302,7 +433,12 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                           ),
                           const SizedBox(height: 3),
                           Row(children: [
-                            Text(_attribute.label, style: TextStyle(color: _attribute.color, fontSize: 11.5)),
+                            // #if edição sem atributo escolhido: pede para escolher
+                            (_isEdit && !_attributeChosen)
+                                ? const Text('Escolha o atributo',
+                                    style: TextStyle(color: AppColors.danger, fontSize: 11.5))
+                                : Text(_attribute.label,
+                                    style: TextStyle(color: _attribute.color, fontSize: 11.5)),
                             const SizedBox(width: 6),
                             Container(
                                 width: 4,
@@ -336,6 +472,30 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                 ),
               ),
             ),
+            // #if modo edição: botão de excluir no fim do formulário
+            if (_isEdit) ...[
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: (_saving || _deleting) ? null : _delete,
+                  icon: _deleting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.danger),
+                        )
+                      : const Icon(Icons.delete_outline, color: AppColors.danger),
+                  label: const Text('Excluir tarefa',
+                      style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.danger),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

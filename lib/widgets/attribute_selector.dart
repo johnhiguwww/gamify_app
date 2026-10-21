@@ -4,7 +4,8 @@ import '../models/attribute.dart';
 import '../theme/app_colors.dart';
 import 'attribute_row.dart';
 
-// #$ AttributeOption — item do seletor. type == null representa "Outro".
+// #$ AttributeOption — item do seletor (um dos 9 atributos da API).
+// ## a opção "Outro" foi REMOVIDA: a API exige sempre um atributo da lista.
 class AttributeOption {
   final String label;
   final IconData icon;
@@ -24,7 +25,6 @@ final attributeOptions = <AttributeOption>[
   AttributeOption(label: AttributeType.autoconsciencia.label, icon: AttributeType.autoconsciencia.icon, color: attributeColor(AttributeType.autoconsciencia), type: AttributeType.autoconsciencia),
   AttributeOption(label: AttributeType.raciocinioLogico.label, icon: AttributeType.raciocinioLogico.icon, color: attributeColor(AttributeType.raciocinioLogico), type: AttributeType.raciocinioLogico),
   AttributeOption(label: AttributeType.musicalidade.label, icon: AttributeType.musicalidade.icon, color: attributeColor(AttributeType.musicalidade), type: AttributeType.musicalidade),
-  const AttributeOption(label: 'Outro', icon: Icons.add, color: AppColors.textSecondary, type: null),
 ];
 
 class AttributeSelector extends StatelessWidget {

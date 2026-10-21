@@ -9,7 +9,9 @@ import '../theme/app_colors.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/store_icon_picker.dart';
 
-// #$ StoreManagementScreen — cadastrar, editar e apagar itens da loja.
+// #$ StoreManagementScreen — cadastrar e editar itens da loja.
+// #!! decisão do projeto: NÃO existe ação de apagar item (itens comprados
+// ficam como registro). A lista mostra só itens NÃO comprados.
 // ## a API só aceita nome e valor (>= 1). O ícone é escolhido aqui e fica
 // guardado só no navegador (StoreIconStorage).
 class StoreManagementScreen extends StatefulWidget {
@@ -20,12 +22,14 @@ class StoreManagementScreen extends StatefulWidget {
 }
 
 class _StoreManagementScreenState extends State<StoreManagementScreen> {
+  // #!! lista COMPLETA vinda da API (comprados e não comprados): o _add usa
+  // ela para descobrir qual item é novo; a tela filtra só na hora de exibir
   List<StoreItem> _items = [];
   bool _loading = true;
   String? _error;
   // #v true se a API respondeu 404 (perfil ou loja não existem)
   bool _storeMissing = false;
-  // #v true enquanto uma operação (adicionar/editar/apagar) está em andamento
+  // #v true enquanto uma operação (adicionar/editar) está em andamento
   bool _busy = false;
   // #v ícone escolhido para o NOVO item (começa no padrão)
   String _newIconKey = storeIconOptions.first.key;
@@ -35,6 +39,9 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
 
   // #v valor digitado (null se vazio); a API exige >= 1
   int? get _cost => int.tryParse(_costController.text.trim());
+
+  // #v itens que aparecem na tela: só os NÃO comprados
+  List<StoreItem> get _visibleItems => _items.where((i) => !i.purchased).toList();
 
   // #f _canAdd — nome preenchido, valor >= 1 e nenhuma operação em andamento
   bool get _canAdd =>
@@ -114,7 +121,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     final iconKey = _newIconKey;
     await _run(
       (userId) async {
-        // #v ids que já existiam, para achar o item novo depois
+        // #v ids que já existiam (lista completa), para achar o item novo depois
         final before = {for (final i in _items) i.id};
         await GamifyApiService.instance.addStoreItem(userId: userId, name: name, value: value);
         // ## o addStoreItem não devolve o id: buscamos a loja e vemos qual item é novo
@@ -152,34 +159,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     );
   }
 
-  // #f _delete — confirma e chama DELETE /profiles/{id}/deleteItem/{itemId}
-  Future<void> _delete(StoreItem item) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Apagar item?'),
-        content: Text('"${item.title}" será removido da loja.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Apagar', style: TextStyle(color: AppColors.danger)),
-          ),
-        ],
-      ),
-    );
-    // #if não confirmou
-    if (ok != true) return;
-    await _run(
-      (userId) async {
-        await GamifyApiService.instance.deleteStoreItem(userId: userId, itemId: item.id);
-        // ## só limpa o ícone salvo depois que a API apagou de verdade
-        await StoreIconStorage.remove(item.id);
-      },
-      'Item apagado',
-    );
-  }
-
   // #f _list — carregando, erro, loja inexistente, vazio ou a lista de itens
   List<Widget> _list() {
     // #if carregando
@@ -201,18 +180,20 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
             style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
       ];
     }
-    // #if vazio
-    if (_items.isEmpty) {
+    // #v só os itens ainda não comprados
+    final visible = _visibleItems;
+    // #if vazio (nenhum item, ou todos já comprados)
+    if (visible.isEmpty) {
       return const [
         Padding(
           padding: EdgeInsets.symmetric(vertical: 12),
-          child: Text('Nenhum item ainda.',
+          child: Text('Nenhum item disponível.',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
         ),
       ];
     }
     return [
-      for (final item in _items) ...[
+      for (final item in visible) ...[
         Card(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -229,18 +210,9 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(item.title,
-                          style: const TextStyle(
-                              color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 13)),
-                      // #if já foi comprado: avisa que não pode apagar
-                      if (item.purchased)
-                        const Text('Comprado (não pode ser apagado)',
-                            style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                    ],
-                  ),
+                  child: Text(item.title,
+                      style: const TextStyle(
+                          color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 13)),
                 ),
                 Row(children: [
                   const Icon(Icons.monetization_on, color: AppColors.gold, size: 13),
@@ -250,18 +222,10 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                           color: AppColors.gold, fontWeight: FontWeight.w700, fontSize: 12.5)),
                 ]),
                 const SizedBox(width: 8),
+                // ## só editar: não existe botão de apagar (decisão do projeto)
                 IconButton(
                   onPressed: _busy ? null : () => _edit(item),
                   icon: const Icon(Icons.edit, color: AppColors.textSecondary, size: 17),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-                const SizedBox(width: 8),
-                // ## a API recusa apagar item comprado (409), então desabilita
-                IconButton(
-                  onPressed: (_busy || item.purchased) ? null : () => _delete(item),
-                  icon: Icon(Icons.delete_outline,
-                      color: item.purchased ? AppColors.textMuted : AppColors.danger, size: 18),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                 ),
@@ -299,7 +263,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
             ),
             const Padding(
               padding: EdgeInsets.only(left: 44, top: 2, bottom: 16),
-              child: Text('Adicione, edite ou remova itens da loja.',
+              child: Text('Adicione ou edite itens da loja.',
                   style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
             ),
             const Text('Itens da loja',

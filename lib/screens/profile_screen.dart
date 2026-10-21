@@ -8,6 +8,7 @@ import '../services/gamify_api_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/gamify_progress_bar.dart';
+import '../widgets/rank_badge.dart';
 import '../widgets/user_avatar.dart';
 
 // #$ ProfileScreen — foto, nome editável, nível e botão de sair.
@@ -224,7 +225,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
               ),
               const SizedBox(height: 14),
-              Center(child: Text(user.rank, style: const TextStyle(color: AppColors.primaryGreen, fontSize: 13))),
+              // ## selo da patente centralizado (mesmo do dashboard)
+              Center(
+                child: RankBadge(
+                  rank: user.rank,
+                  level: user.globalLevel,
+                  xpToNext: user.xpToNextLevel,
+                  center: true,
+                ),
+              ),
               const SizedBox(height: 20),
 
               // ## campo para editar o nome + botão Salvar

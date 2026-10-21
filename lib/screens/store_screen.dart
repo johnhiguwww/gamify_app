@@ -9,6 +9,9 @@ import '../theme/app_colors.dart';
 import 'store_management_screen.dart';
 
 // #$ StoreScreen — aba "Loja": itens cadastrados pelo próprio usuário
+// #!! decisão do projeto: itens comprados NUNCA são apagados (ficam como
+// registro). A aba "Recompensas" mostra só os NÃO comprados (purchase_at nulo)
+// e a aba "Histórico" mostra os já comprados, do mais recente ao mais antigo.
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key});
 
@@ -17,14 +20,30 @@ class StoreScreen extends StatefulWidget {
 }
 
 class _StoreScreenState extends State<StoreScreen> {
-  // #v itens vindos da API
-  List<StoreItem> _items = [];
+  // #v TODOS os itens vindos da API (comprados e não comprados)
+  List<StoreItem> _all = [];
   bool _loading = true;
   String? _error;
   // #v true se a API respondeu 404 (perfil ou loja não existem)
   bool _storeMissing = false;
   // #v id do item sendo comprado (trava cliques repetidos)
   String? _buyingId;
+  // #v false = aba "Recompensas"; true = aba "Histórico" (já comprados)
+  bool _showHistory = false;
+
+  // #v itens à venda: os que ainda NÃO foram comprados
+  List<StoreItem> get _available => _all.where((i) => !i.purchased).toList();
+
+  // #v itens comprados, do mais recente para o mais antigo
+  List<StoreItem> get _purchased {
+    final list = _all.where((i) => i.purchased).toList();
+    // ## purchasedAt nunca é null aqui (o filtro acima garante)
+    list.sort((a, b) => b.purchasedAt!.compareTo(a.purchasedAt!));
+    return list;
+  }
+
+  // #v total de ouro já gasto na loja (soma dos itens comprados)
+  int get _totalSpent => _purchased.fold(0, (sum, i) => sum + i.cost);
 
   @override
   void initState() {
@@ -33,6 +52,7 @@ class _StoreScreenState extends State<StoreScreen> {
   }
 
   // #f _load — GET /profiles/{uuid}/mystore e aplica os ícones salvos
+  // ## guarda TODOS os itens; cada aba filtra o que mostra
   Future<void> _load() async {
     final userId = AuthService.instance.currentUser?.id;
     // #if sem sessão: avisa e para
@@ -50,7 +70,7 @@ class _StoreScreenState extends State<StoreScreen> {
       if (!mounted) return;
       setState(() {
         _storeMissing = withIcons == null;
-        _items = withIcons ?? [];
+        _all = withIcons ?? [];
         _error = null;
         _loading = false;
       });
@@ -64,6 +84,7 @@ class _StoreScreenState extends State<StoreScreen> {
   }
 
   // #f _buy — PUT /profiles/{id}/purchaseItem/{itemId}
+  // ## depois de comprar, recarrega: o item sai de "Recompensas" e vai para "Histórico"
   // #p item: item escolhido; gold: ouro atual do perfil
   Future<void> _buy(StoreItem item, int gold) async {
     // #if já tem uma compra em andamento
@@ -83,7 +104,7 @@ class _StoreScreenState extends State<StoreScreen> {
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Recompensa resgatada: ${item.title}')),
+        SnackBar(content: Text('Recompensa resgatada: ${item.title}. Ela está no Histórico.')),
       );
     } catch (e) {
       if (mounted) {
@@ -103,12 +124,30 @@ class _StoreScreenState extends State<StoreScreen> {
     if (mounted) _load();
   }
 
-  // #f _fmt — data no formato dd/mm/aaaa
-  String _fmt(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  // #f _formatDate — data da compra no formato dd/mm/aaaa às hh:mm
+  // #p d: data/hora da compra (hora do computador onde a API roda)
+  // #r texto pronto para a tela
+  String _formatDate(DateTime d) {
+    // #f dois dígitos (ex.: 5 -> "05")
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(d.day)}/${two(d.month)}/${d.year} às ${two(d.hour)}:${two(d.minute)}';
+  }
 
-  // #f _body — carregando, erro, loja inexistente, vazio ou a lista
-  List<Widget> _body(int gold) {
+  // #f _itemIcon — quadradinho colorido com o ícone do item
+  // #p item: item da loja
+  Widget _itemIcon(StoreItem item) => Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: item.iconColor.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(item.icon, color: item.iconColor, size: 22),
+      );
+
+  // #f _statusBody — carregando, erro ou loja inexistente (vale para as duas abas)
+  // #r lista de widgets, ou null se está tudo certo para mostrar a aba
+  List<Widget>? _statusBody() {
     // #if carregando
     if (_loading) {
       return const [Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))];
@@ -128,13 +167,21 @@ class _StoreScreenState extends State<StoreScreen> {
             style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
       ];
     }
-    // #if vazio
-    if (_items.isEmpty) {
+    // #else tudo certo: a aba decide o que mostrar
+    return null;
+  }
+
+  // #f _availableBody — aba "Recompensas": itens à venda com botão Comprar
+  // #p gold: ouro atual do perfil
+  List<Widget> _availableBody(int gold) {
+    final items = _available;
+    // #if vazio (nenhum item, ou todos já comprados)
+    if (items.isEmpty) {
       return const [
         Padding(
           padding: EdgeInsets.symmetric(vertical: 24),
           child: Center(
-            child: Text('Sua loja está vazia. Use "Gerenciar Loja" para cadastrar recompensas.',
+            child: Text('Nenhuma recompensa disponível. Use "Gerenciar Loja" para cadastrar novas.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
           ),
@@ -142,37 +189,18 @@ class _StoreScreenState extends State<StoreScreen> {
       ];
     }
     return [
-      for (final item in _items) ...[
+      for (final item in items) ...[
         Card(
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
               children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: item.iconColor.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(item.icon, color: item.iconColor, size: 22),
-                ),
+                _itemIcon(item),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(item.title,
-                          style: const TextStyle(
-                              color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 14)),
-                      // #if já foi comprado: mostra a data da última compra
-                      if (item.purchasedAt != null) ...[
-                        const SizedBox(height: 2),
-                        Text('Comprado em ${_fmt(item.purchasedAt!)}',
-                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
-                      ],
-                    ],
-                  ),
+                  child: Text(item.title,
+                      style: const TextStyle(
+                          color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 14)),
                 ),
                 const SizedBox(width: 8),
                 Column(
@@ -198,8 +226,8 @@ class _StoreScreenState extends State<StoreScreen> {
                               height: 14,
                               child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryGreen),
                             )
-                          : Text(item.purchased ? 'Comprar de novo' : 'Comprar',
-                              style: const TextStyle(
+                          : const Text('Comprar',
+                              style: TextStyle(
                                   color: AppColors.primaryGreen, fontSize: 12.5, fontWeight: FontWeight.w700)),
                     ),
                   ],
@@ -213,6 +241,109 @@ class _StoreScreenState extends State<StoreScreen> {
     ];
   }
 
+  // #f _historyBody — aba "Histórico": registro do que já foi comprado
+  // ## só leitura: não tem comprar, editar nem apagar (fica como registro)
+  List<Widget> _historyBody() {
+    final items = _purchased;
+    // #if nada comprado ainda
+    if (items.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(
+            child: Text('Você ainda não comprou nenhuma recompensa.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
+          ),
+        ),
+      ];
+    }
+    return [
+      // ## resumo: quantas compras e quanto ouro já foi gasto
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          children: [
+            Text('${items.length} ${items.length == 1 ? 'compra' : 'compras'}',
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
+            const Spacer(),
+            const Text('Total gasto: ', style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
+            const Icon(Icons.monetization_on, color: AppColors.gold, size: 13),
+            const SizedBox(width: 3),
+            Text('$_totalSpent',
+                style: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.w700, fontSize: 12.5)),
+          ],
+        ),
+      ),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          child: Column(
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    children: [
+                      _itemIcon(items[i]),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(items[i].title,
+                                style: const TextStyle(
+                                    color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 14)),
+                            const SizedBox(height: 3),
+                            Text('Comprado em ${_formatDate(items[i].purchasedAt!)}',
+                                style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Row(children: [
+                        const Icon(Icons.monetization_on, color: AppColors.gold, size: 14),
+                        const SizedBox(width: 3),
+                        Text('-${items[i].cost}',
+                            style: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.w700)),
+                      ]),
+                    ],
+                  ),
+                ),
+                if (i != items.length - 1) const Divider(height: 1),
+              ],
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+
+  // #f _tab — título de aba com sublinhado verde quando selecionada
+  // #p label: texto da aba; selected: se é a aba atual; onTap: troca de aba
+  Widget _tab(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  color: selected ? AppColors.textPrimary : AppColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14)),
+          Container(
+            margin: const EdgeInsets.only(top: 4),
+            height: 2,
+            width: 70,
+            // ## só a aba selecionada mostra o sublinhado verde
+            color: selected ? AppColors.primaryGreen : Colors.transparent,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // ## o ouro vem do CurrentUser e atualiza sozinho depois de comprar
@@ -220,6 +351,8 @@ class _StoreScreenState extends State<StoreScreen> {
       valueListenable: CurrentUser.notifier,
       builder: (context, profile, _) {
         final gold = profile?.gold ?? 0;
+        // #v carregando/erro/404 (null = pode mostrar a aba)
+        final status = _statusBody();
         return SafeArea(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -253,21 +386,12 @@ class _StoreScreenState extends State<StoreScreen> {
                     style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
               ),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Recompensas',
-                          style: TextStyle(
-                              color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 14)),
-                      Container(
-                          margin: const EdgeInsets.only(top: 4),
-                          height: 2,
-                          width: 70,
-                          color: AppColors.primaryGreen),
-                    ],
-                  ),
+                  // ## abas: Recompensas (à venda) | Histórico (já comprados)
+                  _tab('Recompensas', !_showHistory, () => setState(() => _showHistory = false)),
+                  const SizedBox(width: 18),
+                  _tab('Histórico', _showHistory, () => setState(() => _showHistory = true)),
+                  const Spacer(),
                   OutlinedButton.icon(
                     onPressed: _openManagement,
                     icon: const Icon(Icons.settings, size: 15, color: AppColors.primaryGreen),
@@ -283,7 +407,8 @@ class _StoreScreenState extends State<StoreScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              ..._body(gold),
+              // #if carregando/erro/404: mostra isso; senão, o conteúdo da aba
+              ...(status ?? (_showHistory ? _historyBody() : _availableBody(gold))),
               const SizedBox(height: 12),
               const Center(child: Icon(Icons.auto_awesome, color: AppColors.primaryGreen, size: 18)),
               const SizedBox(height: 8),
