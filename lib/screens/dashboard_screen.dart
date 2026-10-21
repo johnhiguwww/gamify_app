@@ -10,6 +10,7 @@ import '../widgets/api_task_tile.dart';
 import '../widgets/attribute_row.dart';
 import '../widgets/gamify_progress_bar.dart';
 import '../widgets/mission_card.dart';
+import '../widgets/rank_badge.dart';
 import '../widgets/section_card.dart';
 import 'new_mission_screen.dart';
 import 'new_task_screen.dart';
@@ -62,13 +63,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _fetchTasks(String userId) async {
     try {
+<<<<<<< Updated upstream
       final tasks = await GamifyApiService.instance.fetchTasks(userId);
       if (mounted) setState(() { _tasks = tasks; _loadingTasks = false; });
     } catch (_) {
+=======
+      final userId = AuthService.instance.currentUser?.id;
+      if (userId == null) throw Exception('Sessão expirada, faça login novamente.');
+      final all = await GamifyApiService.instance.fetchTasks(userId);
+      // ## pendente = não encerrada (finished) e fora do período de espera
+      // (recorrente concluída volta sozinha depois de 24 h / 7 dias / 30 dias)
+      final pending = all.where((t) => !t.isDone).take(4).toList();
+      if (mounted) setState(() => _tasks = pending);
+    } catch (e) {
+      if (mounted) setState(() => _tasksError = 'Erro ao carregar tarefas');
+    } finally {
+>>>>>>> Stashed changes
       if (mounted) setState(() => _loadingTasks = false);
     }
   }
 
+<<<<<<< Updated upstream
   Future<void> _fetchMissions(String userId) async {
     try {
       final missions = await GamifyApiService.instance.fetchMissions(userId);
@@ -86,6 +101,97 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() { _loadingTasks = true; _loadingMissions = true; });
     _fetchTasks(userId);
     _fetchMissions(userId);
+=======
+  // #f _completeTask — conclui pela rota certa da frequência e recarrega a lista
+  // ## Única: POST /tasks/complete (encerra). Recorrente: PUT /tasks/complete-cycle
+  // (some do dashboard e volta sozinha quando o período acabar — regra do app)
+  // ## o cabeçalho (ouro) atualiza pelo CurrentUser
+  Future<void> _completeTask(GamifyTask task) async {
+    // #if já tem uma conclusão em andamento, ou a tarefa já está concluída
+    // (o dashboard só lista pendentes, mas a lista pode estar desatualizada)
+    if (_completingTaskId != null || task.isDone) return;
+    setState(() => _completingTaskId = task.id);
+    try {
+      await GamifyApiService.instance.concludeTask(task);
+      await _loadTasks();
+      if (!mounted) return;
+      // #v aviso extra para recorrente: quando ela volta
+      final back = task.isRecurring ? ' Volta em ${_cycleText(task.frequency)}.' : '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                'Tarefa concluída! +${task.xpReward} XP no atributo e +${task.goldReward} de ouro.$back')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível concluir a tarefa: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _completingTaskId = null);
+    }
+  }
+
+  // #f _cycleText — texto do período de renovação de cada frequência
+  // #p f: frequência da tarefa
+  // #r ex.: "24 h", "7 dias", "30 dias"
+  String _cycleText(TaskFrequency f) => switch (f) {
+        TaskFrequency.daily => '24 h',
+        TaskFrequency.weekly => '7 dias',
+        TaskFrequency.monthly => '30 dias',
+        TaskFrequency.once => '',
+      };
+
+  // #f _editTask — abre a tarefa no formulário de edição e recarrega ao voltar
+  // #p task: tarefa tocada no dashboard (sempre pendente aqui)
+  Future<void> _editTask(GamifyTask task) async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => NewTaskScreen(task: task)));
+    if (mounted) _loadTasks();
+  }
+
+  // #f _openNewMission — abre a Nova Missão e recarrega a lista ao voltar
+  Future<void> _openNewMission() async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const NewMissionScreen()));
+    if (mounted) _loadMissions();
+  }
+
+  // #f _openNewTask — abre a Nova Tarefa e recarrega a lista ao voltar
+  Future<void> _openNewTask() async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const NewTaskScreen()));
+    if (mounted) _loadTasks();
+  }
+
+  // #f _missionsBody — carregando, erro, vazio ou a lista
+  Widget _missionsBody() {
+    // #if carregando
+    if (_loadingMissions) return const _Loading();
+    // #if erro
+    if (_missionsError != null) return _EmptyHint(text: _missionsError!);
+    // #if vazio
+    if (_missions.isEmpty) return const _EmptyHint(text: 'Nenhuma missão');
+    return Column(children: [for (final m in _missions) MissionCard(mission: m)]);
+  }
+
+  // #f _tasksBody — carregando, erro, vazio ou a lista
+  Widget _tasksBody() {
+    // #if carregando
+    if (_loadingTasks) return const _Loading();
+    // #if erro
+    if (_tasksError != null) return _EmptyHint(text: _tasksError!);
+    // #if vazio
+    if (_tasks.isEmpty) return const _EmptyHint(text: 'Nenhuma tarefa');
+    return Column(
+      children: [
+        // ## toque no corpo = editar; toque no círculo = concluir
+        for (final t in _tasks)
+          TaskTile(task: t, onToggle: (_) => _completeTask(t), onTap: () => _editTask(t)),
+      ],
+    );
+>>>>>>> Stashed changes
   }
 
   @override
@@ -269,6 +375,7 @@ class _Header extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(user.name,
+<<<<<<< Updated upstream
                   style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w700)),
               Row(children: [
                 const Icon(Icons.eco, color: AppColors.primaryGreen, size: 13),
@@ -276,6 +383,13 @@ class _Header extends StatelessWidget {
                 Text(user.rank, style: const TextStyle(color: AppColors.primaryGreen, fontSize: 12)),
               ]),
               const Text('Nível Global', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+=======
+                  style: const TextStyle(
+                      color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 3),
+              // ## selo da patente: cor e ícone da patente + próxima patente
+              RankBadge(rank: user.rank, level: user.globalLevel, xpToNext: user.xpToNextLevel),
+>>>>>>> Stashed changes
             ],
           ),
         ),

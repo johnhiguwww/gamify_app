@@ -42,5 +42,6 @@ out/
 
 ### Logs da aplicação ###
 Logs/
-logs/.dart_tool/
+logs/
+.dart_tool/
 .flutter-plugins-dependencies

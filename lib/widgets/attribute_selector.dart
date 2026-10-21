@@ -3,11 +3,16 @@ import '../models/attribute.dart';
 import '../theme/app_colors.dart';
 import 'attribute_row.dart';
 
+<<<<<<< Updated upstream
 // #$ AttributeOption — item do seletor. type == null representa "Outro".
 // #!! "Saúde" (Figuras Nova Missão/Nova Tarefa) é o rótulo amigável do
 // atributo Força no fluxo de criação; o XP continua indo pro atributo Força
 // no dashboard. Ajuste aqui se a regra de negócio definir "Saúde" como
 // categoria própria no backend.
+=======
+// #$ AttributeOption — item do seletor (um dos 9 atributos da API).
+// ## a opção "Outro" foi REMOVIDA: a API exige sempre um atributo da lista.
+>>>>>>> Stashed changes
 class AttributeOption {
   final String label;
   final IconData icon;
